@@ -3,11 +3,10 @@ import db from '../db.js';
 import { requireAuth, requireRole, audit } from '../middleware.js';
 
 const router = express.Router();
-router.use(requireAuth);
 
 const VALID_TIERS = new Set(['1','2','unlimited']);
 
-router.get('/pricing', (req, res) => {
+router.get('/pricing', requireAuth, (req, res) => {
   const rows = db.prepare(`
     SELECT * FROM pricing WHERE active=1
     ORDER BY duration_days ASC,
@@ -16,7 +15,7 @@ router.get('/pricing', (req, res) => {
   res.json({ pricing: rows });
 });
 
-router.post('/pricing', requireRole('owner'), (req, res) => {
+router.post('/pricing', requireAuth, requireRole('owner'), (req, res) => {
   const { duration_days, device_tier, credit_cost } = req.body || {};
   const days = parseInt(duration_days, 10);
   const cost = parseInt(credit_cost, 10);
@@ -39,7 +38,7 @@ router.post('/pricing', requireRole('owner'), (req, res) => {
   }
 });
 
-router.patch('/pricing/:id', requireRole('owner'), (req, res) => {
+router.patch('/pricing/:id', requireAuth, requireRole('owner'), (req, res) => {
   const { credit_cost, active } = req.body || {};
   const row = db.prepare('SELECT * FROM pricing WHERE id=?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'not found' });
@@ -60,7 +59,7 @@ router.patch('/pricing/:id', requireRole('owner'), (req, res) => {
   res.json({ ok: true });
 });
 
-router.delete('/pricing/:id', requireRole('owner'), (req, res) => {
+router.delete('/pricing/:id', requireAuth, requireRole('owner'), (req, res) => {
   const row = db.prepare('SELECT * FROM pricing WHERE id=?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'not found' });
   db.prepare('DELETE FROM pricing WHERE id=?').run(row.id);
