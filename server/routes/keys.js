@@ -17,7 +17,7 @@ function buildKey() {
   return `${getPrefix()}-${a}-${b}-${c}`;
 }
 
-/* ---------- LIST with search/filter/pagination ---------- */
+/* ---------- LIST ---------- */
 router.get('/', (req, res) => {
   const me = req.user;
   const rank = ROLE_RANK[me.role];
@@ -99,7 +99,7 @@ router.get('/:id/details',
     res.json({ key: k, devices });
   });
 
-/* ---------- GENERATE (with pricing lookup) ---------- */
+/* ---------- GENERATE ---------- */
 router.post('/generate', requireRole('reseller'), (req, res) => {
   const me = req.user;
   const isReseller = me.role === 'reseller';
@@ -154,7 +154,7 @@ router.post('/generate', requireRole('reseller'), (req, res) => {
   res.json({ keys: created, balance: newBalance, unit_cost: unitCost, total_cost: totalCost });
 });
 
-/* ---------- RESET ---------- */
+/* ---------- RESET (all roles) ---------- */
 router.post('/:id/reset',
   requireRole('reseller'),
   requireOwnershipOr('owner', req =>
@@ -167,11 +167,11 @@ router.post('/:id/reset',
     res.json({ ok: true });
   });
 
-/* ---------- BAN / UNBAN (Owner+) ---------- */
+/* ---------- BAN / UNBAN (reseller+ too, but only own keys) ---------- */
 router.post('/:id/ban',
-  requireRole('owner'),
+  requireRole('reseller'),
   requireOwnershipOr('owner', req =>
-    db.prepare('SELECT id,key_value FROM keys WHERE id=?').get(req.params.id)),
+    db.prepare('SELECT id,owner_id,created_by,key_value FROM keys WHERE id=?').get(req.params.id)),
   (req, res) => {
     db.prepare(`UPDATE keys SET banned=1, banned_at=strftime('%s','now'), banned_by=? WHERE id=?`)
       .run(req.user.id, req.resource.id);
@@ -180,9 +180,9 @@ router.post('/:id/ban',
   });
 
 router.post('/:id/unban',
-  requireRole('owner'),
+  requireRole('reseller'),
   requireOwnershipOr('owner', req =>
-    db.prepare('SELECT id,key_value FROM keys WHERE id=?').get(req.params.id)),
+    db.prepare('SELECT id,owner_id,created_by,key_value FROM keys WHERE id=?').get(req.params.id)),
   (req, res) => {
     db.prepare(`UPDATE keys SET banned=0, banned_at=NULL, banned_by=NULL WHERE id=?`)
       .run(req.resource.id);
@@ -190,9 +190,9 @@ router.post('/:id/unban',
     res.json({ ok: true });
   });
 
-/* ---------- DELETE (Admin+) ---------- */
+/* ---------- DELETE (reseller+ too, but only own keys) ---------- */
 router.delete('/:id',
-  requireRole('admin'),
+  requireRole('reseller'),
   requireOwnershipOr('owner', req =>
     db.prepare('SELECT id,owner_id,created_by,key_value FROM keys WHERE id=?').get(req.params.id)),
   (req, res) => {
@@ -200,20 +200,6 @@ router.delete('/:id',
     db.prepare('DELETE FROM keys WHERE id=?').run(req.resource.id);
     audit(req, 'key.delete', `key:${req.resource.id}`, { key_value: req.resource.key_value });
     res.json({ ok: true });
-  });
-
-/* ---------- Reset link (Admin+) ---------- */
-router.post('/:id/reset-link',
-  requireRole('admin'),
-  requireOwnershipOr('owner', req =>
-    db.prepare('SELECT id,owner_id,created_by FROM keys WHERE id=?').get(req.params.id)),
-  (req, res) => {
-    const token = crypto.randomBytes(24).toString('base64url');
-    const expires = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
-    db.prepare('UPDATE keys SET reset_token=?, reset_expires=? WHERE id=?')
-      .run(token, expires, req.resource.id);
-    audit(req, 'key.reset_link', `key:${req.resource.id}`, {});
-    res.json({ url: `/reset.html?token=${token}` });
   });
 
 /* ---------- MASTER (Owner+) ---------- */
@@ -244,11 +230,10 @@ router.post('/prefix', requireRole('owner'), (req, res) => {
 });
 
 /* ============================================================
-   PUBLIC ROUTER (no auth) — mounted at /api by index.js
+   PUBLIC ROUTER (no auth)
    ============================================================ */
 export const publicResetRouter = express.Router();
 
-/* --- Token-based reset (from a generated reset link) --- */
 publicResetRouter.post('/reset/:token', (req, res) => {
   const now = Math.floor(Date.now() / 1000);
   const key = db.prepare('SELECT * FROM keys WHERE reset_token=? AND reset_expires > ?')
@@ -260,7 +245,6 @@ publicResetRouter.post('/reset/:token', (req, res) => {
   res.json({ ok: true });
 });
 
-/* --- Public key-based reset (user types their license key) --- */
 publicResetRouter.post('/public/reset', (req, res) => {
   const { key } = req.body || {};
   if (!key || typeof key !== 'string') {
@@ -275,10 +259,7 @@ publicResetRouter.post('/public/reset', (req, res) => {
     return res.status(403).json({ status: 'error', message: 'This license has been banned' });
   }
 
-  // Reset device binding
-  db.prepare(`
-    UPDATE keys SET device_id=NULL, status='active', used_at=NULL WHERE id=?
-  `).run(row.id);
+  db.prepare(`UPDATE keys SET device_id=NULL, status='active', used_at=NULL WHERE id=?`).run(row.id);
   db.prepare('DELETE FROM key_devices WHERE key_id=?').run(row.id);
 
   res.json({
@@ -286,6 +267,63 @@ publicResetRouter.post('/public/reset', (req, res) => {
     message: 'Device reset successful',
     key: row.key_value
   });
+});
+
+/* ============================================================
+   RESET LINKS MANAGEMENT (Owner/Admin) — mounted at /api
+   ============================================================ */
+export const resetLinksRouter = express.Router();
+resetLinksRouter.use(requireAuth, requireRole('admin'));
+
+resetLinksRouter.get('/reset-links', (req, res) => {
+  const me = req.user;
+  const rank = ROLE_RANK[me.role];
+  const rows = rank >= ROLE_RANK.owner
+    ? db.prepare(`
+        SELECT r.*, u.username AS owner_name
+        FROM reset_links r LEFT JOIN users u ON u.id = r.owner_id
+        ORDER BY r.id DESC
+      `).all()
+    : db.prepare(`
+        SELECT r.*, u.username AS owner_name
+        FROM reset_links r LEFT JOIN users u ON u.id = r.owner_id
+        WHERE r.owner_id = ?
+        ORDER BY r.id DESC
+      `).all(me.id);
+  res.json({ links: rows });
+});
+
+resetLinksRouter.post('/reset-links', (req, res) => {
+  const me = req.user;
+  const { note, max_uses } = req.body || {};
+  const token = crypto.randomBytes(18).toString('base64url');
+  const uses = (max_uses === '' || max_uses === null || max_uses === undefined) ? null : Math.max(parseInt(max_uses,10) || 0, 0) || null;
+
+  const info = db.prepare(`
+    INSERT INTO reset_links (token, owner_id, note, max_uses)
+    VALUES (?,?,?,?)
+  `).run(token, me.id, note || null, uses);
+
+  audit(req, 'reset_link.create', `reset_link:${info.lastInsertRowid}`, { note, max_uses: uses });
+
+  res.json({
+    id: info.lastInsertRowid,
+    token,
+    url: '/reset.html?token=' + token,
+    note: note || null,
+    max_uses: uses,
+  });
+});
+
+resetLinksRouter.delete('/reset-links/:id', (req, res) => {
+  const me = req.user;
+  const row = db.prepare('SELECT * FROM reset_links WHERE id=?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: 'not found' });
+  if (ROLE_RANK[me.role] < ROLE_RANK.owner && row.owner_id !== me.id)
+    return res.status(403).json({ error: 'forbidden' });
+  db.prepare('DELETE FROM reset_links WHERE id=?').run(row.id);
+  audit(req, 'reset_link.delete', `reset_link:${row.id}`, {});
+  res.json({ ok: true });
 });
 
 export default router;
