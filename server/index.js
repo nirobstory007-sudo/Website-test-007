@@ -29,9 +29,9 @@ app.use('/api/users', userRoutes);
 app.use('/api/keys', keyRoutes);
 app.use('/api/credits', creditRoutes);
 app.use('/api/audit', auditRoutes);
-app.use('/api/apikeys', apiKeyRoutes);
 app.use('/api/external', verifyRoutes);
 app.use('/api', publicResetRouter);
+app.use('/api', apiKeyRoutes);
 app.use('/api', brandingRoutes);
 app.use('/api', pricingRoutes);
 
