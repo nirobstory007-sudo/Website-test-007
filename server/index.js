@@ -22,12 +22,9 @@ app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false }));
 
-// JSON body parser
+/* ---------- Body parsers ---------- */
 app.use(express.json({ limit: '200kb' }));
-
-// ⭐ URL-encoded (form-data) parser — for external tools that post as form
 app.use(express.urlencoded({ extended: true, limit: '200kb' }));
-
 app.use(cookieParser());
 
 /* ---------- Session-based routes ---------- */
@@ -41,14 +38,8 @@ app.use('/api', brandingRoutes);
 app.use('/api', pricingRoutes);
 
 /* ---------- External API (API-key based) ---------- */
-// Primary path — canonical
 app.use('/api/external', verifyRoutes);
-
-// Alias path — many external tools call "/api/reset_hwid" directly
-// (the same routes work here too)
 app.use('/api', verifyRoutes);
-
-// Public token-based reset (no auth)
 app.use('/api', publicResetRouter);
 
 /* ---------- Static + SPA ---------- */
@@ -58,9 +49,16 @@ app.get('/', (req, res) =>
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'))
 );
 
+/* ---------- DEBUG: expose error detail ---------- */
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: 'server error' });
+  console.error('SERVER ERROR:', err && err.stack ? err.stack : err);
+  res.status(500).json({
+    error: 'server error',
+    message: err && err.message ? err.message : String(err),
+    name: err && err.name ? err.name : 'Error',
+    path: req.path,
+    method: req.method,
+  });
 });
 
 const port = process.env.PORT || 3000;
