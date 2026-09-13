@@ -243,8 +243,12 @@ router.post('/prefix', requireRole('owner'), (req, res) => {
   res.json({ ok: true, prefix });
 });
 
-/* ---------- Public reset router ---------- */
+/* ============================================================
+   PUBLIC ROUTER (no auth) — mounted at /api by index.js
+   ============================================================ */
 export const publicResetRouter = express.Router();
+
+/* --- Token-based reset (from a generated reset link) --- */
 publicResetRouter.post('/reset/:token', (req, res) => {
   const now = Math.floor(Date.now() / 1000);
   const key = db.prepare('SELECT * FROM keys WHERE reset_token=? AND reset_expires > ?')
@@ -254,6 +258,34 @@ publicResetRouter.post('/reset/:token', (req, res) => {
                               reset_token=NULL, reset_expires=NULL WHERE id=?`).run(key.id);
   db.prepare('DELETE FROM key_devices WHERE key_id=?').run(key.id);
   res.json({ ok: true });
+});
+
+/* --- Public key-based reset (user types their license key) --- */
+publicResetRouter.post('/public/reset', (req, res) => {
+  const { key } = req.body || {};
+  if (!key || typeof key !== 'string') {
+    return res.status(400).json({ status: 'error', message: 'License key is required' });
+  }
+
+  const row = db.prepare('SELECT * FROM keys WHERE key_value = ?').get(key.trim());
+  if (!row) {
+    return res.status(404).json({ status: 'error', message: 'License key not found' });
+  }
+  if (row.banned) {
+    return res.status(403).json({ status: 'error', message: 'This license has been banned' });
+  }
+
+  // Reset device binding
+  db.prepare(`
+    UPDATE keys SET device_id=NULL, status='active', used_at=NULL WHERE id=?
+  `).run(row.id);
+  db.prepare('DELETE FROM key_devices WHERE key_id=?').run(row.id);
+
+  res.json({
+    status: 'success',
+    message: 'Device reset successful',
+    key: row.key_value
+  });
 });
 
 export default router;
