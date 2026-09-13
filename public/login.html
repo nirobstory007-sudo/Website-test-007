@@ -7,26 +7,56 @@
 <link rel="stylesheet" href="/styles.css"/>
 </head>
 <body class="login-page">
-  <form id="loginForm" class="card login-card" autocomplete="on">
-    <h1>Dashboard</h1>
-    <p class="muted">Sign in to your account</p>
-    <label>Username<input name="username" required autofocus></label>
-    <label>Password<input name="password" type="password" required></label>
-    <button class="primary" type="submit">Sign in</button>
+  <form id="loginForm" class="login-card" autocomplete="on">
+    <div class="login-logo" id="brandLogo">👑</div>
+    <h1 id="brandName">YOUR BRAND NAME</h1>
+    <p class="login-sub" id="brandTagline">License Management System</p>
+
+    <label>Username
+      <input name="username" required autofocus autocomplete="username"/>
+    </label>
+    <label>Password
+      <input name="password" type="password" required autocomplete="current-password"/>
+    </label>
+
+    <button class="btn-primary" type="submit">Enter Dashboard</button>
     <p id="err" class="error" role="alert"></p>
+    <p class="login-footer" id="brandFooter">SECURITY v2.0</p>
   </form>
+
 <script>
+(async () => {
+  try {
+    const r = await fetch('/api/branding');
+    if (r.ok) {
+      const b = await r.json();
+      document.title = b.brand_name + ' — Sign in';
+      document.getElementById('brandLogo').textContent    = b.brand_logo;
+      document.getElementById('brandName').textContent    = b.brand_name;
+      document.getElementById('brandTagline').textContent = b.brand_tagline;
+      document.getElementById('brandFooter').textContent  = b.brand_footer;
+      if (b.brand_color) document.documentElement.style.setProperty('--primary', b.brand_color);
+    }
+  } catch {}
+})();
+
 document.getElementById('loginForm').addEventListener('submit', async e => {
   e.preventDefault();
+  const err = document.getElementById('err');
+  err.textContent = '';
   const fd = new FormData(e.target);
-  const res = await fetch('/api/auth/login', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(Object.fromEntries(fd)),
-  });
-  const data = await res.json();
-  if (!res.ok) { document.getElementById('err').textContent = data.error; return; }
-  location.href = '/';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.fromEntries(fd)),
+    });
+    const data = await res.json();
+    if (!res.ok) { err.textContent = data.error || 'Login failed'; return; }
+    location.href = '/';
+  } catch {
+    err.textContent = 'Network error. Try again.';
+  }
 });
 </script>
 </body>
