@@ -12,6 +12,8 @@ import creditRoutes from './routes/credits.js';
 import auditRoutes from './routes/audit.js';
 import apiKeyRoutes from './routes/apikeys.js';
 import verifyRoutes from './routes/verify.js';
+import brandingRoutes from './routes/branding.js';
+import pricingRoutes from './routes/pricing.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -30,6 +32,8 @@ app.use('/api/audit', auditRoutes);
 app.use('/api/apikeys', apiKeyRoutes);
 app.use('/api/external', verifyRoutes);
 app.use('/api', publicResetRouter);
+app.use('/api', brandingRoutes);
+app.use('/api', pricingRoutes);
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
