@@ -113,6 +113,7 @@ addColumnIfMissing('keys', 'device_tier', "TEXT NOT NULL DEFAULT '1'");
 addColumnIfMissing('keys', 'banned',      'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('keys', 'banned_at',   'INTEGER');
 addColumnIfMissing('keys', 'banned_by',   'INTEGER');
+addColumnIfMissing('api_keys', 'key_full', 'TEXT');
 
 const seed = () => {
   const row = db.prepare('SELECT COUNT(*) AS c FROM users WHERE role = ?').get('super_hide_owner');
