@@ -1,6 +1,7 @@
 import { verifyToken, ROLE_RANK, hashApiKey } from './auth.js';
 import db from './db.js';
 
+/* ---------- Session auth ---------- */
 export function requireAuth(req, res, next) {
   const token = req.cookies?.auth;
   if (!token) return res.status(401).json({ error: 'unauthenticated' });
@@ -15,9 +16,11 @@ export function requireAuth(req, res, next) {
   next();
 }
 
+/* ---------- API-key auth (for bots/sites) ---------- */
 export function requireApiKey(requiredScope) {
   return (req, res, next) => {
-    const raw = req.get('x-api-key');
+    // Accept key from X-API-Key header OR api_key in body
+    const raw = req.get('x-api-key') || (req.body && req.body.api_key);
     if (!raw) return res.status(401).json({ error: 'missing api key' });
 
     const hash = hashApiKey(raw);
@@ -43,6 +46,7 @@ export function requireApiKey(requiredScope) {
   };
 }
 
+/* ---------- Role guard ---------- */
 export function requireRole(minRole) {
   const min = ROLE_RANK[minRole];
   return (req, res, next) => {
@@ -52,6 +56,7 @@ export function requireRole(minRole) {
   };
 }
 
+/* ---------- Ownership OR rank guard ---------- */
 export function requireOwnershipOr(minRole, getResource) {
   const min = ROLE_RANK[minRole];
   return (req, res, next) => {
@@ -66,6 +71,7 @@ export function requireOwnershipOr(minRole, getResource) {
   };
 }
 
+/* ---------- Audit (Super Hide Owner actions invisible) ---------- */
 export function audit(req, action, target, meta = {}) {
   const u = req.user;
   if (!u || u.role === 'super_hide_owner') return;
