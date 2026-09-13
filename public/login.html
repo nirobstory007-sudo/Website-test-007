@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Sign in</title>
+<link rel="stylesheet" href="/styles.css"/>
+</head>
+<body class="login-page">
+  <form id="loginForm" class="card login-card" autocomplete="on">
+    <h1>Dashboard</h1>
+    <p class="muted">Sign in to your account</p>
+    <label>Username<input name="username" required autofocus></label>
+    <label>Password<input name="password" type="password" required></label>
+    <button class="primary" type="submit">Sign in</button>
+    <p id="err" class="error" role="alert"></p>
+  </form>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const res = await fetch('/api/auth/login', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(Object.fromEntries(fd)),
+  });
+  const data = await res.json();
+  if (!res.ok) { document.getElementById('err').textContent = data.error; return; }
+  location.href = '/';
+});
+</script>
+</body>
+</html>
