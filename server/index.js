@@ -7,7 +7,7 @@ import 'dotenv/config';
 
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
-import keyRoutes, { publicResetRouter } from './routes/keys.js';
+import keyRoutes, { publicResetRouter, resetLinksRouter } from './routes/keys.js';
 import creditRoutes from './routes/credits.js';
 import auditRoutes from './routes/audit.js';
 import apiKeyRoutes from './routes/apikeys.js';
@@ -36,6 +36,7 @@ app.use('/api/audit', auditRoutes);
 app.use('/api', apiKeyRoutes);
 app.use('/api', brandingRoutes);
 app.use('/api', pricingRoutes);
+app.use('/api', resetLinksRouter);
 
 /* ---------- External API (API-key based) ---------- */
 app.use('/api/external', verifyRoutes);
@@ -49,7 +50,7 @@ app.get('/', (req, res) =>
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'))
 );
 
-/* ---------- DEBUG: expose error detail ---------- */
+/* ---------- DEBUG ---------- */
 app.use((err, req, res, next) => {
   console.error('SERVER ERROR:', err && err.stack ? err.stack : err);
   res.status(500).json({
