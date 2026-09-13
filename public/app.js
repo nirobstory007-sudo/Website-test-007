@@ -730,7 +730,7 @@ async function renderMaster(el) {
   };
 }
 
-/* ============ API KEYS ============ */
+/* ============ API KEYS (admin page) ============ */
 async function renderApiKeys(el) {
   const { apiKeys = [] } = await fetchT('/api/apikeys').then(r => r.json());
   el.innerHTML = `
@@ -805,64 +805,82 @@ async function renderApiDocs(el) {
   const origin = location.origin;
   const baseUrl = `${origin}/api/external`;
 
-  let apiKeys = [];
-  try { apiKeys = (await fetchT('/api/apikeys').then(r => r.json())).apiKeys || []; } catch {}
-  const firstKey = apiKeys.find(k => k.active);
+  let apiKey = null;
+  try {
+    const r = await fetchT('/api/apikeys/current');
+    if (r.ok) {
+      const d = await r.json();
+      apiKey = d.apiKey;
+    }
+  } catch (e) { console.error('api key fetch:', e); }
 
   const endpoint = (method, color, title, url, body, resp, curl) => `
     <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
-      <div style="background:${color};padding:12px 18px;display:flex;align-items:center;gap:12px">
-        <span style="background:rgba(0,0,0,0.35);padding:3px 10px;border-radius:6px;font-size:11px;font-weight:800;letter-spacing:1px">${method}</span>
-        <span style="font-weight:800;letter-spacing:0.5px;font-size:14px">${title}</span>
+      <div style="background:${color};padding:14px 18px;display:flex;align-items:center;gap:12px">
+        <span style="background:rgba(0,0,0,0.35);padding:4px 12px;border-radius:7px;font-size:11px;font-weight:900;letter-spacing:1.2px">${method}</span>
+        <span style="font-weight:900;letter-spacing:0.5px;font-size:14px">${title}</span>
       </div>
       <div style="padding:18px">
-        <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;font-weight:700;margin-bottom:6px">URL</div>
-        <pre style="background:rgba(0,0,0,0.35);padding:12px;border-radius:8px;overflow-x:auto;font-size:12.5px;color:#c4b5fd;margin-bottom:16px"><code style="background:none;padding:0">${url}</code></pre>
+        <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1.2px;font-weight:900;margin-bottom:8px">URL</div>
+        <pre style="background:rgba(0,0,0,0.35);padding:14px;border-radius:10px;overflow-x:auto;font-size:12.5px;color:#c4b5fd;margin-bottom:18px"><code style="background:none;padding:0">${url}</code></pre>
 
-        <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;font-weight:700;margin-bottom:6px">Parameters (POST / JSON body)</div>
-        <div class="table-wrap" style="margin-bottom:16px">
+        <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1.2px;font-weight:900;margin-bottom:8px">Parameters (POST / JSON body)</div>
+        <div class="table-wrap" style="margin-bottom:18px">
           <table>
             <thead><tr><th>Parameter</th><th>Type</th><th>Information</th></tr></thead>
             <tbody>${body}</tbody>
           </table>
         </div>
 
-        <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;font-weight:700;margin-bottom:6px">Example Response</div>
-        <pre style="background:rgba(0,0,0,0.35);padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;color:#86efac;margin-bottom:16px"><code style="background:none;padding:0">${resp}</code></pre>
+        <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1.2px;font-weight:900;margin-bottom:8px">Example Response</div>
+        <pre style="background:rgba(0,0,0,0.35);padding:14px;border-radius:10px;overflow-x:auto;font-size:12px;color:#86efac;margin-bottom:18px"><code style="background:none;padding:0">${resp}</code></pre>
 
-        <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;font-weight:700;margin-bottom:6px">Example (cURL)</div>
-        <pre style="background:rgba(0,0,0,0.35);padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;color:#c4b5fd"><code style="background:none;padding:0">${curl}</code></pre>
+        <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1.2px;font-weight:900;margin-bottom:8px">Example (cURL)</div>
+        <pre style="background:rgba(0,0,0,0.35);padding:14px;border-radius:10px;overflow-x:auto;font-size:12px;color:#c4b5fd"><code style="background:none;padding:0">${curl}</code></pre>
       </div>
     </div>
   `;
+
+  const keyDisplay = apiKey && apiKey.full
+    ? apiKey.full
+    : (apiKey ? `${apiKey.prefix}... (regenerate to reveal full key)` : 'Loading…');
 
   el.innerHTML = `
     <h1>API Documentation</h1>
     <p class="muted" style="margin-bottom:20px">REST endpoints for external integrations. Available for all roles.</p>
 
     <div class="card" style="padding:0;overflow:hidden">
-      <div style="background:linear-gradient(90deg,#3b82f6,#6366f1);padding:12px 18px;display:flex;align-items:center;gap:10px">
-        <span style="font-size:16px">🛡️</span>
-        <span style="font-weight:800;letter-spacing:0.5px">AUTHENTICATION</span>
+      <div style="background:linear-gradient(90deg,#3b82f6,#6366f1);padding:16px 20px;display:flex;align-items:center;gap:12px">
+        <span style="font-size:18px">🛡️</span>
+        <span style="font-weight:900;letter-spacing:0.8px;font-size:14px">AUTHENTICATION</span>
       </div>
-      <div style="padding:18px">
-        <p>All API requests must include <code>api_key</code> in the request body OR as <code>X-API-Key</code> header.</p>
-        <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;font-weight:700;margin:14px 0 6px">Base URL</div>
-        <pre style="background:rgba(0,0,0,0.35);padding:12px;border-radius:8px;overflow-x:auto;font-size:12.5px;color:#86efac"><code style="background:none;padding:0">${baseUrl}</code></pre>
+      <div style="padding:20px">
+        <p style="line-height:1.7">All API requests must include <code>api_key</code> from your account — either in the request body OR as <code>X-API-Key</code> header.</p>
+        <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1.2px;font-weight:900;margin:18px 0 8px">Base URL</div>
+        <pre style="background:rgba(0,0,0,0.35);padding:14px;border-radius:10px;overflow-x:auto;font-size:12.5px;color:#86efac"><code style="background:none;padding:0">${baseUrl}</code></pre>
       </div>
     </div>
 
     <div class="card" style="padding:0;overflow:hidden">
-      <div style="background:linear-gradient(90deg,#7c3aed,#a855f7);padding:12px 18px;display:flex;align-items:center;gap:10px">
-        <span style="font-size:16px">🔑</span>
-        <span style="font-weight:800;letter-spacing:0.5px">YOUR API KEY</span>
+      <div style="background:linear-gradient(90deg,#7c3aed,#a855f7);padding:16px 20px;display:flex;align-items:center;gap:12px">
+        <span style="font-size:18px">🔑</span>
+        <span style="font-weight:900;letter-spacing:0.8px;font-size:14px">CONFIGURATION &amp; API KEY</span>
       </div>
-      <div style="padding:18px">
-        ${firstKey ? `
-          <p class="muted">Prefix: <code>${firstKey.key_prefix}…</code></p>
-          <p class="muted" style="margin-top:6px">Scopes: <b>${firstKey.scopes}</b></p>
-          <p class="muted" style="margin-top:6px">Full key was shown only once when created. If lost, revoke and create a new one.</p>
-        ` : `<p class="muted">You don't have any API keys yet. Go to <b>API Keys</b> in the sidebar to create one.</p>`}
+      <div style="padding:20px">
+        <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1.2px;font-weight:900;margin-bottom:10px">Your API Key</div>
+
+        <div style="display:flex;gap:12px;align-items:stretch;flex-wrap:wrap">
+          <pre id="apiKeyBox" style="flex:1;min-width:240px;background:rgba(0,0,0,0.4);padding:16px;border-radius:12px;overflow-x:auto;font-size:13.5px;color:#86efac;margin:0;font-family:ui-monospace,monospace;font-weight:600;letter-spacing:0.5px"><code style="background:none;padding:0">${keyDisplay}</code></pre>
+          <button class="primary" id="copyApiKey" style="align-self:stretch;min-width:100px">📋 Copy</button>
+        </div>
+
+        <div style="margin-top:18px">
+          <button class="primary" id="regenApiKey">🔄 Generate New API Key</button>
+        </div>
+
+        <p class="muted" style="margin-top:16px;font-size:12.5px;line-height:1.7">
+          ⚠️ Keep this key safe. Do not share it with anyone. Regenerating will invalidate the old key immediately.
+        </p>
       </div>
     </div>
 
@@ -882,7 +900,7 @@ async function renderApiDocs(el) {
 
     ${endpoint('POST', 'linear-gradient(90deg,#10b981,#059669)', 'ENDPOINT: GENERATE KEY', `${baseUrl}/generate_key`,
       `<tr><td><code>api_key</code></td><td>string</td><td>Your API Key</td></tr>
-       <tr><td><code>days</code></td><td>int</td><td>License duration in days (must match a pricing rule)</td></tr>
+       <tr><td><code>days</code></td><td>int</td><td>License duration (must match a pricing rule)</td></tr>
        <tr><td><code>count</code></td><td>int</td><td>Number of keys to generate (max 10)</td></tr>
        <tr><td><code>device</code></td><td>string</td><td><code>1</code> · <code>2</code> · <code>unlimited</code> (optional, default 1)</td></tr>`,
       `{
@@ -906,14 +924,12 @@ async function renderApiDocs(el) {
   "status": "success",
   "message": "2 key(s) deleted successfully.",
   "deleted": 2,
-  "deleted_keys": ["KEY001", "KEY002"],
-  "not_found": ["KEY999"],
-  "skipped": ["KEY003"]
+  "deleted_keys": ["KEY001", "KEY002"]
 }`,
       `curl -X POST ${baseUrl}/delete_key \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: YOUR_API_KEY" \\
-  -d '{"keys":["KEY001","KEY002","KEY003"]}'`
+  -d '{"keys":["KEY001","KEY002"]}'`
     )}
 
     ${endpoint('POST', 'linear-gradient(90deg,#f97316,#ea580c)', 'ENDPOINT: REGISTER DEVICE (Unlimited Tracking)', `${baseUrl}/register_device`,
@@ -953,6 +969,25 @@ async function renderApiDocs(el) {
       </ul>
     </div>
   `;
+
+  el.querySelector('#copyApiKey')?.addEventListener('click', async () => {
+    if (!apiKey || !apiKey.full) return toast('✗ No key to copy');
+    try {
+      await navigator.clipboard.writeText(apiKey.full);
+      toast('✓ API key copied');
+    } catch {
+      toast('✗ Copy failed — long press to select');
+    }
+  });
+
+  el.querySelector('#regenApiKey')?.addEventListener('click', async () => {
+    if (!confirm('Regenerate API key? The old key will stop working immediately.')) return;
+    const r = await fetchT('/api/apikeys/regenerate', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) return toast('✗ ' + d.error);
+    toast('✓ New API key generated');
+    renderApiDocs(el);
+  });
 }
 
 /* ============ SETTINGS ============ */
