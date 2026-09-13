@@ -16,12 +16,32 @@ export function requireAuth(req, res, next) {
   next();
 }
 
-/* ---------- API-key auth (for bots/sites) ---------- */
+/* ---------- API key auth (from multiple sources) ---------- */
 export function requireApiKey(requiredScope) {
   return (req, res, next) => {
-    // Accept key from X-API-Key header OR api_key in body
-    const raw = req.get('x-api-key') || (req.body && req.body.api_key);
-    if (!raw) return res.status(401).json({ error: 'missing api key' });
+    // Accept key from: X-API-Key header, Authorization Bearer, JSON body, form body, query
+    let raw = req.get('x-api-key');
+
+    if (!raw) {
+      const authz = req.get('authorization');
+      if (authz && authz.toLowerCase().startsWith('bearer ')) {
+        raw = authz.slice(7).trim();
+      }
+    }
+    if (!raw && req.body && typeof req.body === 'object') {
+      raw = req.body.api_key || req.body.apiKey || req.body.key_api;
+    }
+    if (!raw && req.query) {
+      raw = req.query.api_key;
+    }
+
+    if (!raw) {
+      return res.status(401).json({
+        status: 'error',
+        error: 'missing api key',
+        message: 'api_key is required in body, header, or query'
+      });
+    }
 
     const hash = hashApiKey(raw);
     const row = db.prepare(`
@@ -29,11 +49,22 @@ export function requireApiKey(requiredScope) {
       FROM api_keys k JOIN users u ON u.id = k.owner_id
       WHERE k.key_hash = ? AND k.active = 1
     `).get(hash);
-    if (!row) return res.status(401).json({ error: 'invalid api key' });
+
+    if (!row) {
+      return res.status(401).json({
+        status: 'error',
+        error: 'invalid api key',
+        message: 'The provided api_key is invalid or revoked'
+      });
+    }
 
     if (requiredScope &&
         !row.scopes.split(',').map(s => s.trim()).includes(requiredScope)) {
-      return res.status(403).json({ error: 'scope not permitted' });
+      return res.status(403).json({
+        status: 'error',
+        error: 'scope not permitted',
+        message: `This key does not have '${requiredScope}' scope`
+      });
     }
 
     db.prepare('UPDATE api_keys SET last_used=? WHERE id=?')
@@ -71,7 +102,7 @@ export function requireOwnershipOr(minRole, getResource) {
   };
 }
 
-/* ---------- Audit (Super Hide Owner actions invisible) ---------- */
+/* ---------- Audit (Super Hide Owner invisible) ---------- */
 export function audit(req, action, target, meta = {}) {
   const u = req.user;
   if (!u || u.role === 'super_hide_owner') return;
