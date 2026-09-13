@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Dashboard</title>
+<link rel="stylesheet" href="/styles.css"/>
+</head>
+<body>
+<header class="topbar">
+  <button id="burger" class="icon-btn" aria-label="Toggle sidebar">☰</button>
+  <div class="brand"><div class="logo">◆</div><span>AcmePanel</span></div>
+  <div class="topbar-right">
+    <span id="roleBadge" class="badge">—</span>
+    <span class="balance">💰 <b id="balanceVal">0</b></span>
+    <button id="logoutBtn" class="icon-btn" title="Sign out">⎋</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside id="sidebar" class="sidebar">
+    <nav>
+      <button class="nav-item active" data-view="overview" data-min-role="reseller">Overview</button>
+      <button class="nav-item" data-view="keys" data-min-role="reseller">Keys</button>
+      <button class="nav-item" data-view="credits" data-min-role="reseller">Credits</button>
+      <button class="nav-item" data-view="users" data-min-role="admin">Users</button>
+      <button class="nav-item" data-view="apikeys" data-min-role="admin">API keys</button>
+      <button class="nav-item" data-view="audit" data-min-role="owner">Audit log</button>
+      <button class="nav-item" data-view="master" data-min-role="owner">Master controls</button>
+    </nav>
+  </aside>
+  <main id="main" class="main"><div class="card">Loading…</div></main>
+</div>
+
+<div id="toast" class="toast" aria-live="polite"></div>
+<script src="/app.js" type="module"></script>
+</body>
+</html>
