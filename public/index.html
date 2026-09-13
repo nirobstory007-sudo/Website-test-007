@@ -8,28 +8,79 @@
 </head>
 <body>
 <header class="topbar">
-  <button id="burger" class="icon-btn" aria-label="Toggle sidebar">☰</button>
-  <div class="brand"><div class="logo">◆</div><span>AcmePanel</span></div>
+  <button id="burger" class="icon-btn" aria-label="Toggle menu">☰</button>
+  <div class="brand">
+    <div class="logo-badge" id="brandLogo">👑</div>
+    <span id="brandName">YOUR BRAND NAME</span>
+    <span class="pro-badge">PRO</span>
+  </div>
   <div class="topbar-right">
-    <span id="roleBadge" class="badge">—</span>
-    <span class="balance">💰 <b id="balanceVal">0</b></span>
+    <div class="balance-pill">
+      <span class="coin">🪙</span>
+      <b id="balanceVal">0</b>
+    </div>
     <button id="logoutBtn" class="icon-btn" title="Sign out">⎋</button>
   </div>
 </header>
 
 <div class="layout">
   <aside id="sidebar" class="sidebar">
-    <nav>
-      <button class="nav-item active" data-view="overview" data-min-role="reseller">Overview</button>
-      <button class="nav-item" data-view="keys" data-min-role="reseller">Keys</button>
-      <button class="nav-item" data-view="credits" data-min-role="reseller">Credits</button>
-      <button class="nav-item" data-view="users" data-min-role="admin">Users</button>
-      <button class="nav-item" data-view="apikeys" data-min-role="admin">API keys</button>
-      <button class="nav-item" data-view="audit" data-min-role="owner">Audit log</button>
-      <button class="nav-item" data-view="master" data-min-role="owner">Master controls</button>
+    <div class="sidebar-section">Core</div>
+    <nav id="nav">
+      <button class="nav-item active" data-view="overview" data-min-role="reseller">
+        <span class="nav-icon">📊</span><span>Overview</span>
+      </button>
+      <button class="nav-item" data-view="keys" data-min-role="reseller">
+        <span class="nav-icon">🔑</span><span>Generate Keys</span>
+      </button>
+      <button class="nav-item" data-view="licenses" data-min-role="reseller">
+        <span class="nav-icon">📋</span><span>License Manager</span>
+      </button>
+      <button class="nav-item" data-view="credits" data-min-role="reseller">
+        <span class="nav-icon">💳</span><span>Credits</span>
+      </button>
+
+      <div class="sidebar-section">Admin</div>
+      <button class="nav-item" data-view="users" data-min-role="admin">
+        <span class="nav-icon">👥</span><span>Users</span>
+      </button>
+      <button class="nav-item" data-view="apikeys" data-min-role="admin">
+        <span class="nav-icon">🔌</span><span>API Keys</span>
+      </button>
+      <button class="nav-item" data-view="apidocs" data-min-role="reseller">
+        <span class="nav-icon">📖</span><span>API Docs</span>
+      </button>
+      <button class="nav-item" data-view="audit" data-min-role="owner">
+        <span class="nav-icon">📜</span><span>Audit Log</span>
+      </button>
+
+      <div class="sidebar-section">Config</div>
+      <button class="nav-item" data-view="pricing" data-min-role="owner">
+        <span class="nav-icon">💰</span><span>Pricing</span>
+      </button>
+      <button class="nav-item" data-view="settings" data-min-role="reseller">
+        <span class="nav-icon">⚙️</span><span>Settings</span>
+      </button>
+      <button class="nav-item" data-view="master" data-min-role="owner">
+        <span class="nav-icon">🎛️</span><span>Master Controls</span>
+      </button>
     </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-card">
+        <div class="user-avatar" id="userAvatar">?</div>
+        <div class="user-info">
+          <div class="uname" id="userName">—</div>
+          <div class="urole"><span class="status-dot"></span><span id="userRole">—</span></div>
+        </div>
+      </div>
+      <button class="btn-signout" id="signOutBtn">⏻ Sign Out</button>
+    </div>
   </aside>
-  <main id="main" class="main"><div class="card">Loading…</div></main>
+
+  <main id="main" class="main">
+    <div class="card">Loading…</div>
+  </main>
 </div>
 
 <div id="toast" class="toast" aria-live="polite"></div>
