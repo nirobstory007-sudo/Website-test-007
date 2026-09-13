@@ -3,24 +3,82 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Reset key</title>
+<title>Device Reset</title>
 <link rel="stylesheet" href="/styles.css"/>
 </head>
 <body class="login-page">
-  <div class="card login-card">
-    <h1>Device Reset</h1>
-    <p id="msg">Click the button below to release the device binding for this key.</p>
-    <button class="primary" id="doReset">Reset now</button>
+  <div class="login-card">
+    <div class="login-logo" id="brandLogo">👑</div>
+    <h1 id="brandName">YOUR BRAND NAME</h1>
+    <p class="login-sub">Device Reset Tool</p>
+
+    <label>License Key
+      <input id="licenseKey" placeholder="DEMO-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
+    </label>
+
+    <button class="btn-primary" id="resetBtn">🔄 Reset Device</button>
+    <p id="msg" class="error" role="alert"></p>
+    <p class="login-footer">One reset per license · Contact support if you need more</p>
   </div>
+
 <script>
-const token = new URLSearchParams(location.search).get('token');
-document.getElementById('doReset').onclick = async () => {
-  const res = await fetch(`/api/reset/${encodeURIComponent(token)}`, { method:'POST' });
-  const data = await res.json();
-  document.getElementById('msg').textContent = res.ok
-    ? '✓ Key reset. You can now activate on a new device.'
-    : '✗ ' + data.error;
-};
+(async () => {
+  try {
+    const r = await fetch('/api/branding');
+    if (r.ok) {
+      const b = await r.json();
+      document.title = b.brand_name + ' — Device Reset';
+      document.getElementById('brandLogo').textContent  = b.brand_logo;
+      document.getElementById('brandName').textContent  = b.brand_name;
+      if (b.brand_color) document.documentElement.style.setProperty('--primary', b.brand_color);
+    }
+  } catch {}
+})();
+
+async function doReset() {
+  const msg = document.getElementById('msg');
+  const btn = document.getElementById('resetBtn');
+  const key = document.getElementById('licenseKey').value.trim();
+
+  if (!key) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = '✗ Please enter a license key';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Resetting…';
+  msg.textContent = '';
+
+  try {
+    const res = await fetch('/api/public/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      msg.style.color = 'var(--ok)';
+      msg.textContent = '✓ Device reset successful! You can now activate on a new device.';
+      document.getElementById('licenseKey').value = '';
+    } else {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = '✗ ' + (data.message || data.error || 'Reset failed');
+    }
+  } catch (e) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = '✗ Network error. Please try again.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 Reset Device';
+  }
+}
+
+document.getElementById('resetBtn').addEventListener('click', doReset);
+document.getElementById('licenseKey').addEventListener('keypress', e => {
+  if (e.key === 'Enter') doReset();
+});
 </script>
 </body>
 </html>
