@@ -95,12 +95,25 @@ CREATE TABLE IF NOT EXISTS key_devices (
   FOREIGN KEY(key_id) REFERENCES keys(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS reset_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token TEXT UNIQUE NOT NULL,
+  owner_id INTEGER NOT NULL,
+  note TEXT,
+  max_uses INTEGER,
+  uses INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_keys_owner ON keys(owner_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_apikeys_hash ON api_keys(key_hash);
 CREATE INDEX IF NOT EXISTS idx_verif_key ON verifications(key_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_pricing ON pricing(duration_days, device_tier);
 CREATE INDEX IF NOT EXISTS idx_key_devices ON key_devices(key_id);
+CREATE INDEX IF NOT EXISTS idx_reset_links_owner ON reset_links(owner_id);
 `);
 
 function addColumnIfMissing(table, column, definition) {
