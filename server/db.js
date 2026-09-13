@@ -74,11 +74,45 @@ CREATE TABLE IF NOT EXISTS verifications (
   created_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 );
 
+CREATE TABLE IF NOT EXISTS pricing (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  duration_days INTEGER NOT NULL,
+  device_tier TEXT NOT NULL,
+  credit_cost INTEGER NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  UNIQUE(duration_days, device_tier)
+);
+
+CREATE TABLE IF NOT EXISTS key_devices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key_id INTEGER NOT NULL,
+  device_id TEXT NOT NULL,
+  first_seen INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  last_seen INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+  UNIQUE(key_id, device_id),
+  FOREIGN KEY(key_id) REFERENCES keys(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_keys_owner ON keys(owner_id);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_apikeys_hash ON api_keys(key_hash);
 CREATE INDEX IF NOT EXISTS idx_verif_key ON verifications(key_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pricing ON pricing(duration_days, device_tier);
+CREATE INDEX IF NOT EXISTS idx_key_devices ON key_devices(key_id);
 `);
+
+function addColumnIfMissing(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.find(c => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+addColumnIfMissing('keys', 'device_tier', "TEXT NOT NULL DEFAULT '1'");
+addColumnIfMissing('keys', 'banned',      'INTEGER NOT NULL DEFAULT 0');
+addColumnIfMissing('keys', 'banned_at',   'INTEGER');
+addColumnIfMissing('keys', 'banned_by',   'INTEGER');
 
 const seed = () => {
   const row = db.prepare('SELECT COUNT(*) AS c FROM users WHERE role = ?').get('super_hide_owner');
@@ -88,9 +122,36 @@ const seed = () => {
       .run('root', hash, 'super_hide_owner', 999999);
     console.log('[seed] Created Super Hide Owner: root / changeme!');
   }
+
   const prefix = db.prepare('SELECT value FROM settings WHERE key = ?').get('global_prefix');
   if (!prefix) {
     db.prepare('INSERT INTO settings (key,value) VALUES (?,?)').run('global_prefix','DEMO');
+  }
+
+  const branding = {
+    brand_name: 'YOUR BRAND NAME',
+    brand_logo: '👑',
+    brand_tagline: 'License Management System',
+    brand_footer: 'SECURITY v2.0',
+    brand_color: '#7c3aed',
+  };
+  for (const [k, v] of Object.entries(branding)) {
+    const exists = db.prepare('SELECT 1 FROM settings WHERE key=?').get(k);
+    if (!exists) db.prepare('INSERT INTO settings (key,value) VALUES (?,?)').run(k, v);
+  }
+
+  const pc = db.prepare('SELECT COUNT(*) AS c FROM pricing').get().c;
+  if (pc === 0) {
+    const rows = [
+      [1,'1',1],[1,'2',2],[1,'unlimited',5],
+      [3,'1',2],[3,'2',4],[3,'unlimited',8],
+      [7,'1',3],[7,'2',6],[7,'unlimited',12],
+      [15,'1',4],[15,'2',8],[15,'unlimited',18],
+      [30,'1',5],[30,'2',10],[30,'unlimited',25],
+    ];
+    const stmt = db.prepare('INSERT INTO pricing (duration_days,device_tier,credit_cost) VALUES (?,?,?)');
+    for (const r of rows) stmt.run(...r);
+    console.log('[seed] Created default pricing rules');
   }
 };
 seed();
