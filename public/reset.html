@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Reset key</title>
+<link rel="stylesheet" href="/styles.css"/>
+</head>
+<body class="login-page">
+  <div class="card login-card">
+    <h1>Device Reset</h1>
+    <p id="msg">Click the button below to release the device binding for this key.</p>
+    <button class="primary" id="doReset">Reset now</button>
+  </div>
+<script>
+const token = new URLSearchParams(location.search).get('token');
+document.getElementById('doReset').onclick = async () => {
+  const res = await fetch(`/api/reset/${encodeURIComponent(token)}`, { method:'POST' });
+  const data = await res.json();
+  document.getElementById('msg').textContent = res.ok
+    ? '✓ Key reset. You can now activate on a new device.'
+    : '✗ ' + data.error;
+};
+</script>
+</body>
+</html>
