@@ -4,12 +4,11 @@ import { requireAuth, requireRole, audit } from '../middleware.js';
 import { generateApiKey, ROLE_RANK } from '../auth.js';
 
 const router = express.Router();
-router.use(requireAuth);
 
 const ALLOWED_SCOPES = new Set(['verify', 'keys:read', 'keys:write', 'credits']);
 
 /* ---------- Get or auto-create current user's primary API key ---------- */
-router.get('/apikeys/current', (req, res) => {
+router.get('/apikeys/current', requireAuth, (req, res) => {
   const me = req.user;
 
   let row = db.prepare(`
@@ -44,7 +43,7 @@ router.get('/apikeys/current', (req, res) => {
 });
 
 /* ---------- Regenerate current API key ---------- */
-router.post('/apikeys/regenerate', (req, res) => {
+router.post('/apikeys/regenerate', requireAuth, (req, res) => {
   const me = req.user;
 
   db.prepare('UPDATE api_keys SET active=0 WHERE owner_id=?').run(me.id);
@@ -74,7 +73,7 @@ router.post('/apikeys/regenerate', (req, res) => {
 });
 
 /* ---------- List (admin page) ---------- */
-router.get('/apikeys', requireRole('admin'), (req, res) => {
+router.get('/apikeys', requireAuth, requireRole('admin'), (req, res) => {
   const me = req.user;
   const rows = ROLE_RANK[me.role] >= ROLE_RANK.owner
     ? db.prepare(`
@@ -89,7 +88,7 @@ router.get('/apikeys', requireRole('admin'), (req, res) => {
 });
 
 /* ---------- Create ---------- */
-router.post('/apikeys', requireRole('admin'), (req, res) => {
+router.post('/apikeys', requireAuth, requireRole('admin'), (req, res) => {
   const me = req.user;
   const { name, scopes } = req.body || {};
   if (!name || typeof name !== 'string' || name.length > 64)
@@ -112,7 +111,7 @@ router.post('/apikeys', requireRole('admin'), (req, res) => {
 });
 
 /* ---------- Revoke ---------- */
-router.post('/apikeys/:id/revoke', requireRole('admin'), (req, res) => {
+router.post('/apikeys/:id/revoke', requireAuth, requireRole('admin'), (req, res) => {
   const me = req.user;
   const row = db.prepare('SELECT * FROM api_keys WHERE id=?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'not found' });
@@ -124,7 +123,7 @@ router.post('/apikeys/:id/revoke', requireRole('admin'), (req, res) => {
 });
 
 /* ---------- Delete ---------- */
-router.delete('/apikeys/:id', requireRole('admin'), (req, res) => {
+router.delete('/apikeys/:id', requireAuth, requireRole('admin'), (req, res) => {
   const me = req.user;
   const row = db.prepare('SELECT * FROM api_keys WHERE id=?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'not found' });
