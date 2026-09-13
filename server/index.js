@@ -21,20 +21,37 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '100kb' }));
+
+// JSON body parser
+app.use(express.json({ limit: '200kb' }));
+
+// ⭐ URL-encoded (form-data) parser — for external tools that post as form
+app.use(express.urlencoded({ extended: true, limit: '200kb' }));
+
 app.use(cookieParser());
 
+/* ---------- Session-based routes ---------- */
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/keys', keyRoutes);
 app.use('/api/credits', creditRoutes);
 app.use('/api/audit', auditRoutes);
-app.use('/api/external', verifyRoutes);
-app.use('/api', publicResetRouter);
 app.use('/api', apiKeyRoutes);
 app.use('/api', brandingRoutes);
 app.use('/api', pricingRoutes);
 
+/* ---------- External API (API-key based) ---------- */
+// Primary path — canonical
+app.use('/api/external', verifyRoutes);
+
+// Alias path — many external tools call "/api/reset_hwid" directly
+// (the same routes work here too)
+app.use('/api', verifyRoutes);
+
+// Public token-based reset (no auth)
+app.use('/api', publicResetRouter);
+
+/* ---------- Static + SPA ---------- */
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.get('/', (req, res) =>
