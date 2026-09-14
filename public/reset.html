@@ -18,10 +18,13 @@
 
     <button class="btn-primary" id="resetBtn">🔄 Reset Device</button>
     <p id="msg" class="error" role="alert"></p>
-    <p class="login-footer">One reset per license · Contact support if you need more</p>
+    <p class="login-footer" id="footerNote">Contact support if you need help</p>
   </div>
 
 <script>
+const token = new URLSearchParams(location.search).get('token');
+
+/* Load branding */
 (async () => {
   try {
     const r = await fetch('/api/branding');
@@ -30,19 +33,33 @@
       document.title = b.brand_name + ' — Device Reset';
       document.getElementById('brandLogo').textContent  = b.brand_logo;
       document.getElementById('brandName').textContent  = b.brand_name;
+      document.getElementById('footerNote').textContent = b.brand_footer;
       if (b.brand_color) document.documentElement.style.setProperty('--primary', b.brand_color);
     }
   } catch {}
 })();
+
+/* If no token — block reset */
+if (!token) {
+  document.getElementById('resetBtn').disabled = true;
+  const msg = document.getElementById('msg');
+  msg.style.color = 'var(--danger)';
+  msg.textContent = '✗ No reset link. Please use the link provided by your reseller.';
+}
 
 async function doReset() {
   const msg = document.getElementById('msg');
   const btn = document.getElementById('resetBtn');
   const key = document.getElementById('licenseKey').value.trim();
 
+  if (!token) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = '✗ No reset link provided';
+    return;
+  }
   if (!key) {
     msg.style.color = 'var(--danger)';
-    msg.textContent = '✗ Please enter a license key';
+    msg.textContent = '✗ Please enter your license key';
     return;
   }
 
@@ -54,13 +71,13 @@ async function doReset() {
     const res = await fetch('/api/public/reset', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key })
+      body: JSON.stringify({ key, token })
     });
     const data = await res.json();
 
     if (res.ok) {
       msg.style.color = 'var(--ok)';
-      msg.textContent = '✓ Device reset successful! You can now activate on a new device.';
+      msg.textContent = '✓ ' + (data.message || 'Device reset successful!');
       document.getElementById('licenseKey').value = '';
     } else {
       msg.style.color = 'var(--danger)';
