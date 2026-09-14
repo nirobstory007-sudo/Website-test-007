@@ -512,6 +512,297 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 /* ============================================================
+   DASHBOARD HEADER
+   ============================================================ */
+.dash-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.dash-header h1 {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--text);
+}
+.dash-header .dash-burger {
+  font-size: 20px;
+  color: var(--text);
+}
+
+/* ============================================================
+   STACKED STAT CARDS (Dashboard overview)
+   ============================================================ */
+.stack-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.stack-card {
+  background: linear-gradient(160deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+.stack-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+}
+.stack-card .s-lbl {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: var(--muted);
+  font-weight: 900;
+  margin-bottom: 12px;
+}
+.stack-card .s-num {
+  font-size: 42px;
+  font-weight: 900;
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 12px;
+  letter-spacing: -1px;
+}
+.stack-card .s-desc {
+  font-size: 13px;
+  color: var(--text-2);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.stack-card .s-icon {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  font-size: 30px;
+  opacity: 0.4;
+}
+
+/* ============================================================
+   QUICK ACCESS
+   ============================================================ */
+.qa-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+.qa-btn {
+  background: linear-gradient(160deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 26px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.qa-btn:hover {
+  border-color: var(--primary);
+  color: var(--text);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(124, 58, 237, 0.2);
+}
+.qa-btn .qa-icon {
+  font-size: 32px;
+  opacity: 0.85;
+}
+.qa-full { grid-column: 1 / -1; }
+
+/* ============================================================
+   USER CARD (Dashboard)
+   ============================================================ */
+.user-card-dash {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: linear-gradient(160deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.user-card-dash .uc-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.user-card-dash .uc-name {
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--text);
+}
+.user-card-dash .uc-badge {
+  margin-left: auto;
+}
+
+/* ============================================================
+   DETAILED ANALYTICS
+   ============================================================ */
+.analytics-title {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 26px 0 16px;
+}
+
+.an-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr 1fr;
+}
+.an-card {
+  background: linear-gradient(160deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  transition: all 0.2s ease;
+}
+.an-card .an-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  margin-bottom: 14px;
+}
+.an-card .an-icon.green { background: rgba(16, 185, 129, 0.15); }
+.an-card .an-icon.blue  { background: rgba(59, 130, 246, 0.15); }
+.an-card .an-icon.red   { background: rgba(239, 68, 68, 0.15); }
+.an-card .an-icon.orange { background: rgba(245, 158, 11, 0.15); }
+.an-card .an-num {
+  font-size: 34px;
+  font-weight: 900;
+  color: var(--text);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.an-card .an-lbl {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: var(--muted);
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+.an-card .an-sub {
+  font-size: 12px;
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+/* ============================================================
+   PIE CHART CARD
+   ============================================================ */
+.pie-card {
+  margin-top: 14px;
+  background: linear-gradient(160deg, var(--panel), var(--panel-2));
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+.pie-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.pie-head h2 {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1.5px solid rgba(16, 185, 129, 0.4);
+  color: #6ee7b7;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.live-pill .pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.pie-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 22px;
+}
+
+.pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.leg-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.leg-row .leg-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.leg-row .leg-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.leg-row .leg-val {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--text);
+}
+.leg-bar {
+  height: 6px;
+  border-radius: 3px;
+  margin-top: 4px;
+  transition: width 0.4s ease;
+}
+
+/* ============================================================
    FORMS
    ============================================================ */
 label {
@@ -821,3 +1112,6 @@ input[type="file"]::file-selector-button:hover {
 @media (min-width: 721px) {
   #burger { display: none; }
 }
+@media (max-width: 560px) {
+  .an-grid { grid-template-columns: 1fr 1fr; }
+   }
