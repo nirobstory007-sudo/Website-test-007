@@ -13,7 +13,7 @@
     <p class="login-sub">Device Reset Tool</p>
 
     <label>License Key
-      <input id="licenseKey" placeholder="DEMO-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
+      <input id="licenseKey" placeholder="ALIYA-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false">
     </label>
 
     <button class="btn-primary" id="resetBtn">🔄 Reset Device</button>
@@ -24,22 +24,29 @@
 <script>
 const token = new URLSearchParams(location.search).get('token');
 
-/* Load branding */
+function setLogo(el, val) {
+  if (!el) return;
+  if (val && val.startsWith('data:image/')) {
+    el.innerHTML = `<img src="${val}" alt="Logo" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:18px">`;
+  } else {
+    el.textContent = val || '👑';
+  }
+}
+
 (async () => {
   try {
     const r = await fetch('/api/branding');
     if (r.ok) {
       const b = await r.json();
       document.title = b.brand_name + ' — Device Reset';
-      document.getElementById('brandLogo').textContent  = b.brand_logo;
-      document.getElementById('brandName').textContent  = b.brand_name;
+      setLogo(document.getElementById('brandLogo'), b.brand_logo);
+      document.getElementById('brandName').textContent = b.brand_name;
       document.getElementById('footerNote').textContent = b.brand_footer;
       if (b.brand_color) document.documentElement.style.setProperty('--primary', b.brand_color);
     }
   } catch {}
 })();
 
-/* If no token — block reset */
 if (!token) {
   document.getElementById('resetBtn').disabled = true;
   const msg = document.getElementById('msg');
@@ -50,16 +57,23 @@ if (!token) {
 async function doReset() {
   const msg = document.getElementById('msg');
   const btn = document.getElementById('resetBtn');
-  const key = document.getElementById('licenseKey').value.trim();
+  const rawInput = document.getElementById('licenseKey').value;
 
   if (!token) {
     msg.style.color = 'var(--danger)';
     msg.textContent = '✗ No reset link provided';
     return;
   }
-  if (!key) {
+  if (!rawInput || !rawInput.trim()) {
     msg.style.color = 'var(--danger)';
     msg.textContent = '✗ Please enter your license key';
+    return;
+  }
+
+  const key = rawInput.trim();
+  if (key.startsWith('http://') || key.startsWith('https://')) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = '✗ You pasted a URL. Paste your LICENSE KEY (e.g. ALIYA-XXXX-XXXX-XXXX)';
     return;
   }
 
