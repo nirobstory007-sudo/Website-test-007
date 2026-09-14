@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS reset_links (
   max_uses INTEGER,
   uses INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
+  is_master INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
   FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -127,6 +128,7 @@ addColumnIfMissing('keys', 'banned',      'INTEGER NOT NULL DEFAULT 0');
 addColumnIfMissing('keys', 'banned_at',   'INTEGER');
 addColumnIfMissing('keys', 'banned_by',   'INTEGER');
 addColumnIfMissing('api_keys', 'key_full', 'TEXT');
+addColumnIfMissing('reset_links', 'is_master', 'INTEGER NOT NULL DEFAULT 0');
 
 const seed = () => {
   const row = db.prepare('SELECT COUNT(*) AS c FROM users WHERE role = ?').get('super_hide_owner');
