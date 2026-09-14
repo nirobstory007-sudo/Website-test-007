@@ -230,40 +230,57 @@ router.post('/prefix', requireRole('owner'), (req, res) => {
 });
 
 /* ============================================================
-   PUBLIC ROUTER (no auth)
+   PUBLIC ROUTER — NO AUTH REQUIRED
+   Mounted at /api
    ============================================================ */
 export const publicResetRouter = express.Router();
 
+/* Public key-based reset (requires a valid reset token) */
 publicResetRouter.post('/public/reset', (req, res) => {
   const { key, token } = req.body || {};
 
   if (!token || typeof token !== 'string') {
-    return res.status(400).json({ status: 'error', message: 'Reset link required. Please use a valid reset URL.' });
+    return res.status(400).json({
+      status: 'error',
+      message: 'Reset link required. Please use a valid reset URL.'
+    });
   }
   if (!key || typeof key !== 'string') {
-    return res.status(400).json({ status: 'error', message: 'License key is required' });
+    return res.status(400).json({
+      status: 'error',
+      message: 'License key is required'
+    });
   }
 
-  // Validate token
   const link = db.prepare('SELECT * FROM reset_links WHERE token=? AND active=1').get(token);
   if (!link) {
-    return res.status(404).json({ status: 'error', message: 'Invalid or expired reset link' });
+    return res.status(404).json({
+      status: 'error',
+      message: 'Invalid or expired reset link'
+    });
   }
 
   if (link.max_uses && link.uses >= link.max_uses) {
-    return res.status(403).json({ status: 'error', message: 'This reset link has reached its maximum uses' });
+    return res.status(403).json({
+      status: 'error',
+      message: 'This reset link has reached its maximum uses'
+    });
   }
 
-  // Find the license key
   const keyRow = db.prepare('SELECT * FROM keys WHERE key_value = ?').get(key.trim());
   if (!keyRow) {
-    return res.status(404).json({ status: 'error', message: 'License key not found' });
+    return res.status(404).json({
+      status: 'error',
+      message: 'License key not found'
+    });
   }
   if (keyRow.banned) {
-    return res.status(403).json({ status: 'error', message: 'This license has been banned' });
+    return res.status(403).json({
+      status: 'error',
+      message: 'This license has been banned'
+    });
   }
 
-  // If not master link, verify ownership
   if (!link.is_master) {
     if (keyRow.owner_id !== link.owner_id && keyRow.created_by !== link.owner_id) {
       return res.status(403).json({
@@ -273,11 +290,8 @@ publicResetRouter.post('/public/reset', (req, res) => {
     }
   }
 
-  // Perform reset
   db.prepare(`UPDATE keys SET device_id=NULL, status='active', used_at=NULL WHERE id=?`).run(keyRow.id);
   db.prepare('DELETE FROM key_devices WHERE key_id=?').run(keyRow.id);
-
-  // Increment uses
   db.prepare('UPDATE reset_links SET uses = uses + 1 WHERE id=?').run(link.id);
 
   res.json({
@@ -288,11 +302,15 @@ publicResetRouter.post('/public/reset', (req, res) => {
 });
 
 /* ============================================================
-   RESET LINKS MANAGEMENT (mounted at /api)
+   RESET LINKS MANAGEMENT
+   Mounted at /api — protected by requireAuth ONLY on /reset-links/*
    ============================================================ */
 export const resetLinksRouter = express.Router();
-resetLinksRouter.use(requireAuth, requireRole('admin'));
 
+/* ---------- Scoped middleware — ONLY protects /reset-links routes ---------- */
+resetLinksRouter.use('/reset-links', requireAuth, requireRole('admin'));
+
+/* ---------- List ---------- */
 resetLinksRouter.get('/reset-links', (req, res) => {
   const me = req.user;
   const rank = ROLE_RANK[me.role];
@@ -311,12 +329,12 @@ resetLinksRouter.get('/reset-links', (req, res) => {
   res.json({ links: rows });
 });
 
+/* ---------- Create ---------- */
 resetLinksRouter.post('/reset-links', (req, res) => {
   const me = req.user;
   const rank = ROLE_RANK[me.role];
   const { note, max_uses, is_master } = req.body || {};
 
-  // Only Owner+ can create master links
   const wantsMaster = !!is_master;
   if (wantsMaster && rank < ROLE_RANK.owner) {
     return res.status(403).json({ error: 'Only Owner can create master reset links' });
@@ -346,6 +364,7 @@ resetLinksRouter.post('/reset-links', (req, res) => {
   });
 });
 
+/* ---------- Delete ---------- */
 resetLinksRouter.delete('/reset-links/:id', (req, res) => {
   const me = req.user;
   const row = db.prepare('SELECT * FROM reset_links WHERE id=?').get(req.params.id);
