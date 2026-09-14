@@ -135,38 +135,24 @@ async function renderOverview(el) {
     return;
   }
 
-  const now = Math.floor(Date.now() / 1000);
   const total = keys.length;
+  const active = keys.filter(k => k.effective_status === 'active').length;
+  const unused = keys.filter(k => k.effective_status === 'unused').length;
+  const expired = keys.filter(k => k.effective_status === 'expired').length;
+  const paused = keys.filter(k => k.effective_status === 'banned').length;
 
-  const active = keys.filter(k =>
-    !k.banned && (k.status === 'active' || k.status === 'used') &&
-    !(k.used_at && (k.used_at + k.duration_days * 86400) < now)
-  ).length;
-
-  const unused = keys.filter(k =>
-    !k.banned && k.status === 'active' && !k.device_id
-  ).length;
-
-  const paused = keys.filter(k => k.banned).length;
-
-  const expired = keys.filter(k =>
-    k.used_at && (k.used_at + k.duration_days * 86400) < now
-  ).length;
-
-  const pieActive = active;
-  const pieUnused = unused;
-  const piePaused = paused;
-  const pieTotal = pieActive + pieUnused + piePaused || 1;
-  const activePct = Math.round((pieActive / pieTotal) * 100);
-  const unusedPct = Math.round((pieUnused / pieTotal) * 100);
-  const pausedPct = 100 - activePct - unusedPct;
+  const pieTotal = active + unused + expired + paused || 1;
+  const activePct = Math.round((active / pieTotal) * 100);
+  const unusedPct = Math.round((unused / pieTotal) * 100);
+  const expiredPct = Math.round((expired / pieTotal) * 100);
+  const pausedPct = 100 - activePct - unusedPct - expiredPct;
 
   const R = 55;
   const C = 2 * Math.PI * R;
-
-  const seg1 = (pieActive / pieTotal) * C;
-  const seg2 = (pieUnused / pieTotal) * C;
-  const seg3 = (piePaused / pieTotal) * C;
+  const seg1 = (active / pieTotal) * C;
+  const seg2 = (unused / pieTotal) * C;
+  const seg3 = (expired / pieTotal) * C;
+  const seg4 = (paused / pieTotal) * C;
 
   el.innerHTML =
     '<div class="dash-header">' +
@@ -220,21 +206,21 @@ async function renderOverview(el) {
         '<div class="an-sub">// ' + expired + ' expired</div>' +
       '</div>' +
       '<div class="an-card">' +
-        '<div class="an-icon blue">👥</div>' +
+        '<div class="an-icon blue">⚡</div>' +
         '<div class="an-num">' + active + '</div>' +
-        '<div class="an-lbl">Active Keys</div>' +
+        '<div class="an-lbl">Active</div>' +
         '<div class="an-sub">// running now</div>' +
       '</div>' +
       '<div class="an-card">' +
         '<div class="an-icon red">🚫</div>' +
         '<div class="an-num">' + unused + '</div>' +
-        '<div class="an-lbl">Unused Keys</div>' +
-        '<div class="an-sub">// never activated</div>' +
+        '<div class="an-lbl">Unused</div>' +
+        '<div class="an-sub">// not activated</div>' +
       '</div>' +
       '<div class="an-card">' +
         '<div class="an-icon orange">⏸️</div>' +
         '<div class="an-num">' + paused + '</div>' +
-        '<div class="an-lbl">Paused Keys</div>' +
+        '<div class="an-lbl">Banned</div>' +
         '<div class="an-sub">// suspended</div>' +
       '</div>' +
     '</div>' +
@@ -244,60 +230,34 @@ async function renderOverview(el) {
         '<h2>Pie Chart</h2>' +
         '<span class="live-pill"><span class="pulse"></span>Live</span>' +
       '</div>' +
-
       '<div class="pie-wrap">' +
         '<svg width="180" height="180" viewBox="0 0 140 140">' +
           '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="16"/>' +
           '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="#10b981" stroke-width="16"' +
             ' stroke-dasharray="' + seg1 + ' ' + C + '"' +
             ' stroke-dashoffset="0"' +
-            ' transform="rotate(-90 70 70)" stroke-linecap="butt"/>' +
-          '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="#ef4444" stroke-width="16"' +
+            ' transform="rotate(-90 70 70)"/>' +
+          '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="#3b82f6" stroke-width="16"' +
             ' stroke-dasharray="' + seg2 + ' ' + C + '"' +
             ' stroke-dashoffset="-' + seg1 + '"' +
-            ' transform="rotate(-90 70 70)" stroke-linecap="butt"/>' +
+            ' transform="rotate(-90 70 70)"/>' +
           '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="#f59e0b" stroke-width="16"' +
             ' stroke-dasharray="' + seg3 + ' ' + C + '"' +
             ' stroke-dashoffset="-' + (seg1 + seg2) + '"' +
-            ' transform="rotate(-90 70 70)" stroke-linecap="butt"/>' +
+            ' transform="rotate(-90 70 70)"/>' +
+          '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="#ef4444" stroke-width="16"' +
+            ' stroke-dasharray="' + seg4 + ' ' + C + '"' +
+            ' stroke-dashoffset="-' + (seg1 + seg2 + seg3) + '"' +
+            ' transform="rotate(-90 70 70)"/>' +
           '<text x="70" y="68" text-anchor="middle" fill="#ffffff" font-size="20" font-weight="900">' + total + '</text>' +
           '<text x="70" y="86" text-anchor="middle" fill="#7a7a9a" font-size="9" font-weight="800" letter-spacing="1">TOTAL</text>' +
         '</svg>' +
       '</div>' +
-
       '<div class="pie-legend">' +
-        '<div>' +
-          '<div class="leg-row">' +
-            '<span class="leg-dot" style="background:#10b981"></span>' +
-            '<span class="leg-name">Active</span>' +
-            '<span class="leg-val">' + pieActive + '</span>' +
-          '</div>' +
-          '<div class="leg-bar" style="background:#10b981;width:' + activePct + '%"></div>' +
-        '</div>' +
-        '<div>' +
-          '<div class="leg-row">' +
-            '<span class="leg-dot" style="background:#ef4444"></span>' +
-            '<span class="leg-name">Unused</span>' +
-            '<span class="leg-val">' + pieUnused + '</span>' +
-          '</div>' +
-          '<div class="leg-bar" style="background:#ef4444;width:' + unusedPct + '%"></div>' +
-        '</div>' +
-        '<div>' +
-          '<div class="leg-row">' +
-            '<span class="leg-dot" style="background:#f59e0b"></span>' +
-            '<span class="leg-name">Paused</span>' +
-            '<span class="leg-val">' + piePaused + '</span>' +
-          '</div>' +
-          '<div class="leg-bar" style="background:#f59e0b;width:' + pausedPct + '%"></div>' +
-        '</div>' +
-        '<div>' +
-          '<div class="leg-row">' +
-            '<span class="leg-dot" style="background:#8b5cf6"></span>' +
-            '<span class="leg-name">Total</span>' +
-            '<span class="leg-val">' + total + '</span>' +
-          '</div>' +
-          '<div class="leg-bar" style="background:#8b5cf6;width:100%"></div>' +
-        '</div>' +
+        '<div><div class="leg-row"><span class="leg-dot" style="background:#10b981"></span><span class="leg-name">Active</span><span class="leg-val">' + active + '</span></div><div class="leg-bar" style="background:#10b981;width:' + activePct + '%"></div></div>' +
+        '<div><div class="leg-row"><span class="leg-dot" style="background:#3b82f6"></span><span class="leg-name">Unused</span><span class="leg-val">' + unused + '</span></div><div class="leg-bar" style="background:#3b82f6;width:' + unusedPct + '%"></div></div>' +
+        '<div><div class="leg-row"><span class="leg-dot" style="background:#f59e0b"></span><span class="leg-name">Expired</span><span class="leg-val">' + expired + '</span></div><div class="leg-bar" style="background:#f59e0b;width:' + expiredPct + '%"></div></div>' +
+        '<div><div class="leg-row"><span class="leg-dot" style="background:#ef4444"></span><span class="leg-name">Banned</span><span class="leg-val">' + paused + '</span></div><div class="leg-bar" style="background:#ef4444;width:' + pausedPct + '%"></div></div>' +
       '</div>' +
     '</div>';
 
@@ -310,10 +270,9 @@ async function renderOverview(el) {
 }
 views.overview = renderOverview;
 
-/* ============ GENERATE KEYS (with RESULT PANEL) ============ */
+/* ============ GENERATE KEYS ============ */
 async function renderGenerateKeys(el) {
   const rank = ROLE_RANK[ME.role] || 0;
-  let lastGenerated = []; // keys from the last generation
 
   let pricingList = [];
   try {
@@ -391,9 +350,9 @@ async function renderGenerateKeys(el) {
         if (bs) bs.textContent = data.balance;
       }
 
-      lastGenerated = (data.keys || []).map(k => k.key_value);
-      toast('✓ Generated ' + lastGenerated.length + ' key(s) — ' + data.total_cost + ' credits');
-      renderResultPanel(el, lastGenerated, duration_days, device_tier);
+      const newKeys = (data.keys || []).map(k => k.key_value);
+      toast('✓ Generated ' + newKeys.length + ' key(s) — ' + data.total_cost + ' credits');
+      renderResultPanel(el, newKeys, duration_days, device_tier);
       btn.disabled = false;
       btn.textContent = 'Generate Batch';
     } catch (e) {
@@ -402,14 +361,10 @@ async function renderGenerateKeys(el) {
       btn.textContent = 'Generate Batch';
     }
   };
-
-  if (lastGenerated.length > 0) {
-    renderResultPanel(el, lastGenerated, 0, '');
-  }
 }
 views.keys = renderGenerateKeys;
 
-/* ---------- RESULT PANEL (rendered below form after generation) ---------- */
+/* ---------- RESULT PANEL ---------- */
 function renderResultPanel(el, keys, duration_days, device_tier) {
   const box = el.querySelector('#genResult');
   if (!box) return;
@@ -444,7 +399,7 @@ function renderResultPanel(el, keys, duration_days, device_tier) {
         '<button class="primary" id="copyAllBtn">📋 Copy All</button>' +
       '</div>' +
       '<div class="key-list">' + rowsHTML + '</div>' +
-      '<p class="muted" style="margin-top:12px;font-size:12px">⚠️ Save these keys now — you can also find them in License Manager.</p>' +
+      '<p class="muted" style="margin-top:12px;font-size:12px">⚠️ Save these keys now — also visible in License Manager (status: UNUSED until first login).</p>' +
     '</div>';
 
   const copyAll = box.querySelector('#copyAllBtn');
@@ -480,10 +435,10 @@ async function renderLicenseManager(el) {
     '<label>Search<input id="licSearch" placeholder="Key / Username / Device ID" value="' + LICENSES_STATE.q + '"></label>' +
     '<label>Status<select id="licStatus">' +
     '<option value="all"' + (LICENSES_STATE.status === 'all' ? ' selected' : '') + '>All</option>' +
-    '<option value="active"' + (LICENSES_STATE.status === 'active' ? ' selected' : '') + '>Active</option>' +
-    '<option value="used"' + (LICENSES_STATE.status === 'used' ? ' selected' : '') + '>Used</option>' +
-    '<option value="banned"' + (LICENSES_STATE.status === 'banned' ? ' selected' : '') + '>Banned</option>' +
+    '<option value="active"' + (LICENSES_STATE.status === 'active' ? ' selected' : '') + '>Active (running)</option>' +
+    '<option value="unused"' + (LICENSES_STATE.status === 'unused' ? ' selected' : '') + '>Unused (available)</option>' +
     '<option value="expired"' + (LICENSES_STATE.status === 'expired' ? ' selected' : '') + '>Expired</option>' +
+    '<option value="banned"' + (LICENSES_STATE.status === 'banned' ? ' selected' : '') + '>Banned</option>' +
     '</select></label></div>' +
     (canMaster ? '<div class="row" style="margin-bottom:12px"><button class="ghost small" id="masterReset">Reset ALL</button><button class="danger small" id="masterDelete">Delete ALL</button></div>' : '') +
     '<div id="licTable"><div class="card">Loading…</div></div>' +
@@ -517,7 +472,7 @@ async function renderLicenseManager(el) {
 
   const mr = el.querySelector('#masterReset');
   if (mr) mr.onclick = async () => {
-    if (!confirm('Reset EVERY key?')) return;
+    if (!confirm('Reset EVERY key? All keys will become unused again.')) return;
     const r = await fetchT('/api/keys/master/reset-all', { method: 'POST' });
     const d = await r.json();
     toast('✓ Reset ' + d.affected + ' keys');
@@ -534,23 +489,37 @@ async function renderLicenseManager(el) {
 }
 views.licenses = renderLicenseManager;
 
-/* ============ SHARED LICENSE TABLE ============ */
+/* ============ LICENSE TABLE ============ */
 function renderLicTable(wrap, data, rootEl) {
   const keys = data.keys || [];
   const pg = data.pagination || { page: 1, per_page: 20, total: 0, total_pages: 1 };
   let rows = '';
   for (const k of keys) {
+    const st = k.effective_status || 'active';
     let pill;
-    if (k.banned) pill = '<span class="badge danger">banned</span>';
-    else if (k.status === 'used') pill = '<span class="badge warn">used</span>';
+    if (st === 'banned') pill = '<span class="badge danger">banned</span>';
+    else if (st === 'expired') pill = '<span class="badge warn">expired</span>';
+    else if (st === 'revoked') pill = '<span class="badge danger">revoked</span>';
+    else if (st === 'unused') pill = '<span class="badge" style="background:rgba(59,130,246,0.18);color:#93c5fd;border:1.5px solid rgba(59,130,246,0.4)">unused</span>';
     else pill = '<span class="badge ok">active</span>';
+
     const tl = k.device_tier === 'unlimited' ? 'unlimited' : (k.device_tier || '1') + ' device';
+
+    let expiresCell = '—';
+    if (k.used_at && k.expires_at) {
+      const d = new Date(k.expires_at * 1000);
+      expiresCell = d.toLocaleDateString();
+    } else if (st === 'unused') {
+      expiresCell = '<span class="muted">on activation</span>';
+    }
+
     rows +=
       '<tr>' +
       '<td><code>' + k.key_value + '</code></td>' +
       '<td>' + pill + '</td>' +
       '<td>' + (k.device_count || 0) + ' / ' + tl + '</td>' +
       '<td>' + k.duration_days + 'd</td>' +
+      '<td>' + expiresCell + '</td>' +
       '<td>' + (k.owner_name || '—') + '</td>' +
       '<td>' + new Date(k.created_at * 1000).toLocaleDateString() + '</td>' +
       '<td style="text-align:right;white-space:nowrap">' +
@@ -563,10 +532,10 @@ function renderLicTable(wrap, data, rootEl) {
       '</td>' +
       '</tr>';
   }
-  if (!rows) rows = '<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">No keys found</td></tr>';
+  if (!rows) rows = '<tr><td colspan="8" class="muted" style="text-align:center;padding:24px">No keys found</td></tr>';
 
   wrap.innerHTML =
-    '<div class="table-wrap"><table><thead><tr><th>Key</th><th>Status</th><th>Devices</th><th>Duration</th><th>Owner</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody>' +
+    '<div class="table-wrap"><table><thead><tr><th>Key</th><th>Status</th><th>Devices</th><th>Duration</th><th>Expires</th><th>Owner</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead><tbody>' +
     rows +
     '</tbody></table></div>' +
     '<div class="row" style="margin-top:12px;justify-content:space-between">' +
@@ -583,14 +552,14 @@ function renderLicTable(wrap, data, rootEl) {
 
   wrap.querySelectorAll('[data-details]').forEach(b => b.onclick = () => openDetailsModal(+b.dataset.details, rootEl));
   wrap.querySelectorAll('[data-reset]').forEach(b => b.onclick = async () => {
-    if (!confirm('Reset this license? The device binding will be cleared.')) return;
+    if (!confirm('Reset this license? Device binding cleared, expiry timer restarts.')) return;
     const r = await fetchT('/api/keys/' + b.dataset.reset + '/reset', { method: 'POST' });
     if (!r.ok) return toast('✗ Reset failed');
     toast('✓ License reset');
     refreshLic(rootEl);
   });
   wrap.querySelectorAll('[data-ban]').forEach(b => b.onclick = async () => {
-    if (!confirm('Ban this license? User will not be able to log in.')) return;
+    if (!confirm('Ban this license?')) return;
     const r = await fetchT('/api/keys/' + b.dataset.ban + '/ban', { method: 'POST' });
     if (!r.ok) return toast('✗ failed');
     toast('✓ License banned');
@@ -634,11 +603,18 @@ async function openDetailsModal(id, rootEl) {
     const dTable = ds.length === 0 ? '<p class="muted">No devices bound yet.</p>' :
       '<div class="table-wrap"><table><thead><tr><th>Device ID</th><th>First seen</th><th>Last seen</th></tr></thead><tbody>' + dRows + '</tbody></table></div>';
 
+    const st = k.effective_status || k.status;
+    let stPill;
+    if (st === 'banned') stPill = '<span class="badge danger">banned</span>';
+    else if (st === 'expired') stPill = '<span class="badge warn">expired</span>';
+    else if (st === 'unused') stPill = '<span class="badge" style="background:rgba(59,130,246,0.18);color:#93c5fd;border:1.5px solid rgba(59,130,246,0.4)">unused</span>';
+    else stPill = '<span class="badge ok">active</span>';
+
     ov.innerHTML =
       '<div class="card" style="max-width:520px;width:100%;max-height:85vh;overflow-y:auto">' +
       '<div class="row" style="justify-content:space-between;margin-bottom:14px"><h2 style="margin:0">License Details</h2><button class="icon-btn" id="closeModal">✕</button></div>' +
       '<div class="row" style="gap:8px;margin-bottom:14px;flex-wrap:wrap">' +
-      (k.banned ? '<span class="badge danger">banned</span>' : '<span class="badge ' + (k.status === 'used' ? 'warn' : 'ok') + '">' + k.status + '</span>') +
+      stPill +
       '<span class="badge role-admin">' + (k.device_tier === 'unlimited' ? 'unlimited' : (k.device_tier || '1') + ' device') + '</span>' +
       '<span class="badge">' + k.duration_days + ' days</span></div>' +
       '<label>Key<input value="' + k.key_value + '" readonly style="font-family:monospace"></label>' +
@@ -646,9 +622,15 @@ async function openDetailsModal(id, rootEl) {
       '<div class="stat"><div class="lbl">Owner</div><div class="desc" style="color:var(--text);font-size:14px">' + (k.owner_name || '—') + '</div></div>' +
       '<div class="stat"><div class="lbl">Created by</div><div class="desc" style="color:var(--text);font-size:14px">' + (k.creator_name || '—') + '</div></div>' +
       '<div class="stat"><div class="lbl">Created</div><div class="desc" style="color:var(--text);font-size:14px">' + new Date(k.created_at * 1000).toLocaleString() + '</div></div>' +
-      '<div class="stat"><div class="lbl">Expires</div><div class="desc" style="color:var(--text);font-size:14px">' +
-      (k.used_at ? new Date((k.used_at + k.duration_days * 86400) * 1000).toLocaleString() : new Date((k.created_at + k.duration_days * 86400) * 1000).toLocaleString() + ' (from activation)') +
-      '</div></div></div>' +
+      '<div class="stat"><div class="lbl">Activated</div><div class="desc" style="color:var(--text);font-size:14px">' +
+        (k.used_at ? new Date(k.used_at * 1000).toLocaleString() : '<span class="muted">Not yet</span>') +
+      '</div></div>' +
+      '<div class="stat" style="grid-column:span 2"><div class="lbl">Expires</div><div class="desc" style="color:var(--text);font-size:14px">' +
+        (k.expires_at
+          ? new Date(k.expires_at * 1000).toLocaleString()
+          : '<span class="muted">Will start on first login</span>') +
+      '</div></div>' +
+      '</div>' +
       '<h2 style="margin-top:20px;font-size:14px">Devices (' + ds.length + ')</h2>' + dTable +
       '</div>';
 
@@ -972,6 +954,8 @@ async function renderApiTester(el) {
     '<div class="card"><h2>Endpoint</h2>' +
     '<label>Select Endpoint<select id="epSelect">' +
     '<option value="check_balance">POST /check_balance</option>' +
+    '<option value="verify">POST /verify (APK login)</option>' +
+    '<option value="check">GET /check (lightweight)</option>' +
     '<option value="reset_hwid">POST /reset_hwid</option>' +
     '<option value="generate_key">POST /generate_key</option>' +
     '<option value="delete_key">POST /delete_key</option>' +
@@ -999,6 +983,9 @@ async function renderApiTester(el) {
   function renderFields() {
     const ep = el.querySelector('#epSelect').value;
     if (ep === 'check_balance') fld.innerHTML = '<p class="muted">No extra fields — API key added automatically.</p>';
+    else if (ep === 'verify') fld.innerHTML =
+      '<div class="grid">' + f('f_key', 'License Key', 'ALIYA-XXXX-XXXX-XXXX') + f('f_device', 'Device ID', 'device-123') + '</div>';
+    else if (ep === 'check') fld.innerHTML = f('f_key', 'License Key', 'ALIYA-XXXX-XXXX-XXXX');
     else if (ep === 'reset_hwid') fld.innerHTML = f('f_key', 'License Key', 'ALIYA-XXXX-XXXX-XXXX');
     else if (ep === 'generate_key') fld.innerHTML =
       '<div class="grid">' + f('f_days', 'Days', '30') + f('f_count', 'Count (max 10)', '1') + f('f_device', 'Device (1/2/unlimited)', '1') + '</div>';
@@ -1011,9 +998,13 @@ async function renderApiTester(el) {
   function buildBody() {
     const ep = el.querySelector('#epSelect').value;
     const body = { api_key: keyFull };
-    if (ep === 'reset_hwid' || ep === 'delete_key') {
-      const el1 = el.querySelector('#f_key');
-      body.key = el1 ? el1.value.trim() : '';
+    if (ep === 'check') {
+      // GET — no body needed, we'll use query
+    } else if (ep === 'verify') {
+      body.key = ((el.querySelector('#f_key') || {}).value || '').trim();
+      body.device_id = ((el.querySelector('#f_device') || {}).value || '').trim();
+    } else if (ep === 'reset_hwid' || ep === 'delete_key') {
+      body.key = ((el.querySelector('#f_key') || {}).value || '').trim();
     } else if (ep === 'generate_key') {
       body.days = +(el.querySelector('#f_days') || {}).value || 30;
       body.count = +(el.querySelector('#f_count') || {}).value || 1;
@@ -1027,8 +1018,14 @@ async function renderApiTester(el) {
 
   function updPreview() {
     const ep = el.querySelector('#epSelect').value;
-    pu.textContent = location.origin + '/api/external/' + ep;
-    pb.textContent = JSON.stringify(buildBody(), null, 2);
+    if (ep === 'check') {
+      const k = ((el.querySelector('#f_key') || {}).value || '').trim();
+      pu.textContent = location.origin + '/api/external/check?api_key=' + keyFull + '&key=' + k;
+      pb.textContent = '(GET request — no body)';
+    } else {
+      pu.textContent = location.origin + '/api/external/' + ep;
+      pb.textContent = JSON.stringify(buildBody(), null, 2);
+    }
   }
 
   el.querySelector('#epSelect').onchange = renderFields;
@@ -1036,14 +1033,20 @@ async function renderApiTester(el) {
 
   el.querySelector('#testBtn').onclick = async () => {
     const ep = el.querySelector('#epSelect').value;
-    const body = buildBody();
     rb.innerHTML = '<p class="muted">⏳ Sending…</p>';
     try {
-      const res = await fetchT('/api/external/' + ep, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }, 25000);
+      let res;
+      if (ep === 'check') {
+        const k = ((el.querySelector('#f_key') || {}).value || '').trim();
+        res = await fetchT('/api/external/check?api_key=' + encodeURIComponent(keyFull) + '&key=' + encodeURIComponent(k), {}, 25000);
+      } else {
+        const body = buildBody();
+        res = await fetchT('/api/external/' + ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        }, 25000);
+      }
       const text = await res.text();
       let pretty = text;
       try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (e) {}
@@ -1098,6 +1101,8 @@ async function renderApiDocs(el) {
     '</div></div>' +
     '<div class="card"><h2>Endpoints</h2>' +
     '<ul style="margin-left:20px;line-height:2;color:var(--text-2);font-size:13.5px">' +
+    '<li><code>POST /verify</code> — Activate or verify a key (APK login)</li>' +
+    '<li><code>GET /check</code> — Check key status without binding</li>' +
     '<li><code>POST /check_balance</code> — Verify your balance</li>' +
     '<li><code>POST /reset_hwid</code> — Reset a license key device</li>' +
     '<li><code>POST /generate_key</code> — Generate new license keys</li>' +
