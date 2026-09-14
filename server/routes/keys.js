@@ -17,7 +17,7 @@ function buildKey() {
   return `${getPrefix()}-${a}-${b}-${c}`;
 }
 
-/* ---------- LIST with computed effective_status ---------- */
+/* ---------- LIST ---------- */
 router.get('/', (req, res) => {
   const me = req.user;
   const rank = ROLE_RANK[me.role];
@@ -29,7 +29,6 @@ router.get('/', (req, res) => {
   const where = [];
   const params = [];
 
-  // Role scope
   if (rank >= ROLE_RANK.owner) {
     // all
   } else if (rank === ROLE_RANK.admin) {
@@ -40,7 +39,6 @@ router.get('/', (req, res) => {
     params.push(me.id);
   }
 
-  // Status filter — using computed logic
   if (status === 'active') {
     where.push("k.banned=0 AND k.status='used' AND k.used_at IS NOT NULL AND (k.used_at + k.duration_days*86400) > strftime('%s','now')");
   } else if (status === 'unused') {
@@ -160,8 +158,6 @@ router.post('/generate', requireRole('reseller'), (req, res) => {
       for (let a = 0; a < 5; a++) {
         const kv = buildKey();
         try {
-          // status = 'active' means "available/unused" until first activation
-          // used_at = NULL until first APK login
           const info = db.prepare(`
             INSERT INTO keys (key_value, prefix, duration_days, device_tier, status, created_by, owner_id, used_at)
             VALUES (?,?,?,?, 'active', ?, ?, NULL)
@@ -183,16 +179,31 @@ router.post('/generate', requireRole('reseller'), (req, res) => {
   res.json({ keys: created, balance: newBalance, unit_cost: unitCost, total_cost: totalCost });
 });
 
-/* ---------- RESET ---------- */
+/* ---------- RESET (Device-only — expires timer NOT touched) ---------- */
 router.post('/:id/reset',
   requireRole('reseller'),
   requireOwnershipOr('owner', req =>
+    db.prepare('SELECT id,owner_id,created_by,key_value,used_at FROM keys WHERE id=?').get(req.params.id)),
+  (req, res) => {
+    // Only unbind devices — do NOT touch used_at or status
+    db.prepare(`UPDATE keys SET device_id=NULL WHERE id=?`).run(req.resource.id);
+    db.prepare(`DELETE FROM key_devices WHERE key_id=?`).run(req.resource.id);
+    audit(req, 'key.reset', `key:${req.resource.id}`, {
+      key_value: req.resource.key_value,
+      was_activated: !!req.resource.used_at,
+    });
+    res.json({ ok: true });
+  });
+
+/* ---------- FULL RESET (Optionally by Owner — restarts timer) ---------- */
+router.post('/:id/full-reset',
+  requireRole('owner'),
+  requireOwnershipOr('owner', req =>
     db.prepare('SELECT id,owner_id,created_by,key_value FROM keys WHERE id=?').get(req.params.id)),
   (req, res) => {
-    db.prepare(`UPDATE keys SET device_id=NULL, status='active', used_at=NULL WHERE id=?`)
-      .run(req.resource.id);
+    db.prepare(`UPDATE keys SET device_id=NULL, status='active', used_at=NULL WHERE id=?`).run(req.resource.id);
     db.prepare(`DELETE FROM key_devices WHERE key_id=?`).run(req.resource.id);
-    audit(req, 'key.reset', `key:${req.resource.id}`, { key_value: req.resource.key_value });
+    audit(req, 'key.full_reset', `key:${req.resource.id}`, { key_value: req.resource.key_value });
     res.json({ ok: true });
   });
 
@@ -233,10 +244,11 @@ router.delete('/:id',
 
 /* ---------- MASTER (Owner+) ---------- */
 router.post('/master/reset-all', requireRole('owner'), (req, res) => {
-  const info = db.prepare(`UPDATE keys SET device_id=NULL, status='active', used_at=NULL`).run();
+  // Device-only reset for all keys
+  db.prepare(`UPDATE keys SET device_id=NULL`).run();
   db.prepare('DELETE FROM key_devices').run();
-  audit(req, 'key.master_reset', null, { affected: info.changes });
-  res.json({ affected: info.changes });
+  audit(req, 'key.master_reset', null, {});
+  res.json({ affected: 0 });
 });
 
 router.post('/master/delete-all', requireRole('owner'), (req, res) => {
@@ -301,15 +313,32 @@ publicResetRouter.post('/public/reset', (req, res) => {
     }
   }
 
-  // Reset device binding AND reset activation (so expiry timer resets too)
-  db.prepare(`UPDATE keys SET device_id=NULL, status='active', used_at=NULL WHERE id=?`).run(keyRow.id);
+  // ⚠️ Device-only reset — do NOT touch used_at or status
+  // Expired keys stay expired. Active keys keep their timer running.
+  db.prepare(`UPDATE keys SET device_id=NULL WHERE id=?`).run(keyRow.id);
   db.prepare('DELETE FROM key_devices WHERE key_id=?').run(keyRow.id);
   db.prepare('UPDATE reset_links SET uses = uses + 1 WHERE id=?').run(link.id);
 
+  // Tell the user what actually happened
+  const now = Math.floor(Date.now() / 1000);
+  let msg = 'Device unbinding successful. You can now log in on a new device.';
+  if (keyRow.used_at) {
+    const expAt = keyRow.used_at + keyRow.duration_days * 86400;
+    if (expAt < now) {
+      msg = 'Device unbound, but this license has already expired.';
+    } else {
+      const daysLeft = Math.ceil((expAt - now) / 86400);
+      msg = 'Device unbound. License still active — ' + daysLeft + ' day(s) remaining.';
+    }
+  } else {
+    msg = 'Device unbound. License is ready for first activation.';
+  }
+
   res.json({
     status: 'success',
-    message: 'Device reset successful. Key will re-activate on next login.',
-    key: keyRow.key_value
+    message: msg,
+    key: keyRow.key_value,
+    was_activated: !!keyRow.used_at,
   });
 });
 
