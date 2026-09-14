@@ -25,16 +25,25 @@
   </form>
 
 <script>
+function setLogo(el, val) {
+  if (!el) return;
+  if (val && val.startsWith('data:image/')) {
+    el.innerHTML = `<img src="${val}" alt="Logo" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:18px">`;
+  } else {
+    el.textContent = val || '👑';
+  }
+}
+
 (async () => {
   try {
     const r = await fetch('/api/branding');
     if (r.ok) {
       const b = await r.json();
       document.title = b.brand_name + ' — Sign in';
-      document.getElementById('brandLogo').textContent    = b.brand_logo;
-      document.getElementById('brandName').textContent    = b.brand_name;
+      setLogo(document.getElementById('brandLogo'), b.brand_logo);
+      document.getElementById('brandName').textContent = b.brand_name;
       document.getElementById('brandTagline').textContent = b.brand_tagline;
-      document.getElementById('brandFooter').textContent  = b.brand_footer;
+      document.getElementById('brandFooter').textContent = b.brand_footer;
       if (b.brand_color) document.documentElement.style.setProperty('--primary', b.brand_color);
     }
   } catch {}
