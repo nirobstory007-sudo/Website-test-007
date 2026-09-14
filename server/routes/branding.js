@@ -22,14 +22,26 @@ router.get('/branding', (req, res) => {
 });
 
 /* OWNER update */
-router.post('/branding', requireAuth, requireRole('owner'), (req, res) => {
+router.post('/branding', requireAuth, requireRole('owner'), express.json({ limit: '1mb' }), (req, res) => {
   const { brand_name, brand_logo, brand_tagline, brand_footer, brand_color } = req.body || {};
   const updates = {};
+
   if (typeof brand_name === 'string'    && brand_name.trim())    updates.brand_name    = brand_name.trim().slice(0,64);
-  if (typeof brand_logo === 'string'    && brand_logo.trim())    updates.brand_logo    = brand_logo.trim().slice(0,8);
   if (typeof brand_tagline === 'string' && brand_tagline.trim()) updates.brand_tagline = brand_tagline.trim().slice(0,96);
   if (typeof brand_footer === 'string'  && brand_footer.trim())  updates.brand_footer  = brand_footer.trim().slice(0,96);
   if (typeof brand_color === 'string'   && /^#[0-9a-fA-F]{6}$/.test(brand_color)) updates.brand_color = brand_color;
+
+  // brand_logo can be emoji (short text) OR a data URL image
+  if (typeof brand_logo === 'string' && brand_logo.trim()) {
+    const val = brand_logo.trim();
+    if (val.startsWith('data:image/')) {
+      // Cap at 500KB
+      if (val.length > 700000) return res.status(413).json({ error: 'image too large (max ~500KB)' });
+      updates.brand_logo = val;
+    } else {
+      updates.brand_logo = val.slice(0, 16);
+    }
+  }
 
   if (Object.keys(updates).length === 0)
     return res.status(400).json({ error: 'no valid fields' });
@@ -40,7 +52,9 @@ router.post('/branding', requireAuth, requireRole('owner'), (req, res) => {
   `);
   for (const [k,v] of Object.entries(updates)) stmt.run(k, v);
 
-  audit(req, 'branding.update', null, updates);
+  audit(req, 'branding.update', null, {
+    fields: Object.keys(updates).map(k => k === 'brand_logo' ? 'brand_logo(image)' : k)
+  });
   res.json({ ok: true, updated: Object.keys(updates) });
 });
 
