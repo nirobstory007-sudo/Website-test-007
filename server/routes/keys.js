@@ -230,14 +230,12 @@ router.post('/prefix', requireRole('owner'), (req, res) => {
 });
 
 /* ============================================================
-   PUBLIC ROUTER — NO AUTH REQUIRED
-   Mounted at /api
+   PUBLIC ROUTER — NO AUTH
    ============================================================ */
 export const publicResetRouter = express.Router();
 
-/* Public key-based reset (requires a valid reset token) */
 publicResetRouter.post('/public/reset', (req, res) => {
-  const { key, token } = req.body || {};
+  let { key, token } = req.body || {};
 
   if (!token || typeof token !== 'string') {
     return res.status(400).json({
@@ -249,6 +247,16 @@ publicResetRouter.post('/public/reset', (req, res) => {
     return res.status(400).json({
       status: 'error',
       message: 'License key is required'
+    });
+  }
+
+  key = key.trim();
+
+  // Detect if user pasted a URL instead of a key
+  if (key.startsWith('http://') || key.startsWith('https://')) {
+    return res.status(400).json({
+      status: 'error',
+      message: 'You pasted a URL. Please paste your LICENSE KEY (e.g. ALIYA-XXXX-XXXX-XXXX)'
     });
   }
 
@@ -267,11 +275,11 @@ publicResetRouter.post('/public/reset', (req, res) => {
     });
   }
 
-  const keyRow = db.prepare('SELECT * FROM keys WHERE key_value = ?').get(key.trim());
+  const keyRow = db.prepare('SELECT * FROM keys WHERE key_value = ?').get(key);
   if (!keyRow) {
     return res.status(404).json({
       status: 'error',
-      message: 'License key not found'
+      message: 'License key not found. Please check and try again.'
     });
   }
   if (keyRow.banned) {
@@ -281,6 +289,7 @@ publicResetRouter.post('/public/reset', (req, res) => {
     });
   }
 
+  // Ownership check — skipped if is_master
   if (!link.is_master) {
     if (keyRow.owner_id !== link.owner_id && keyRow.created_by !== link.owner_id) {
       return res.status(403).json({
@@ -302,15 +311,11 @@ publicResetRouter.post('/public/reset', (req, res) => {
 });
 
 /* ============================================================
-   RESET LINKS MANAGEMENT
-   Mounted at /api — protected by requireAuth ONLY on /reset-links/*
+   RESET LINKS MANAGEMENT — protected only on /reset-links/*
    ============================================================ */
 export const resetLinksRouter = express.Router();
-
-/* ---------- Scoped middleware — ONLY protects /reset-links routes ---------- */
 resetLinksRouter.use('/reset-links', requireAuth, requireRole('admin'));
 
-/* ---------- List ---------- */
 resetLinksRouter.get('/reset-links', (req, res) => {
   const me = req.user;
   const rank = ROLE_RANK[me.role];
@@ -329,7 +334,6 @@ resetLinksRouter.get('/reset-links', (req, res) => {
   res.json({ links: rows });
 });
 
-/* ---------- Create ---------- */
 resetLinksRouter.post('/reset-links', (req, res) => {
   const me = req.user;
   const rank = ROLE_RANK[me.role];
@@ -364,7 +368,6 @@ resetLinksRouter.post('/reset-links', (req, res) => {
   });
 });
 
-/* ---------- Delete ---------- */
 resetLinksRouter.delete('/reset-links/:id', (req, res) => {
   const me = req.user;
   const row = db.prepare('SELECT * FROM reset_links WHERE id=?').get(req.params.id);
