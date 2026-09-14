@@ -112,12 +112,12 @@ async function showView(name) {
   }
 }
 
-/* ============ OVERVIEW ============ */
+/* ============ OVERVIEW (REDESIGNED) ============ */
 async function renderOverview(el) {
   let keys = [];
   let error = null;
   try {
-    const res = await fetchT('/api/keys?per_page=200', {}, 25000);
+    const res = await fetchT('/api/keys?per_page=500', {}, 25000);
     if (res.ok) {
       const data = await res.json();
       keys = data.keys || [];
@@ -134,18 +134,182 @@ async function renderOverview(el) {
     return;
   }
 
-  const active = keys.filter(k => k.status === 'active' && !k.banned).length;
-  const banned = keys.filter(k => k.banned).length;
+  /* Compute stats */
+  const now = Math.floor(Date.now() / 1000);
+  const total = keys.length;
+
+  const active = keys.filter(k =>
+    !k.banned && (k.status === 'active' || k.status === 'used') &&
+    !(k.used_at && (k.used_at + k.duration_days * 86400) < now)
+  ).length;
+
+  const unused = keys.filter(k =>
+    !k.banned && k.status === 'active' && !k.device_id
+  ).length;
+
+  const paused = keys.filter(k => k.banned).length;
+
+  const expired = keys.filter(k =>
+    k.used_at && (k.used_at + k.duration_days * 86400) < now
+  ).length;
+
+  /* Pie chart numbers */
+  const pieActive = active;
+  const pieUnused = unused;
+  const piePaused = paused;
+  const pieTotal = pieActive + pieUnused + piePaused || 1;
+  const activePct = Math.round((pieActive / pieTotal) * 100);
+  const unusedPct = Math.round((pieUnused / pieTotal) * 100);
+  const pausedPct = 100 - activePct - unusedPct;
+
+  /* Pie chart radii */
+  const R = 55;
+  const C = 2 * Math.PI * R;
+
+  const seg1 = (pieActive / pieTotal) * C;
+  const seg2 = (pieUnused / pieTotal) * C;
+  const seg3 = (piePaused / pieTotal) * C;
 
   el.innerHTML =
-    '<h1>Welcome back, ' + ME.username + '</h1>' +
-    '<p class="muted" style="margin-bottom:20px">Signed in as ' + ME.role.replace(/_/g, ' ') + '</p>' +
-    '<div class="grid">' +
-    '<div class="stat"><div class="stat-icon">🔑</div><div class="lbl">Total Licenses</div><div class="num">' + keys.length + '</div><div class="desc">All time generated</div></div>' +
-    '<div class="stat"><div class="stat-icon">⚡</div><div class="lbl">Active Keys</div><div class="num">' + active + '</div><div class="desc"><span class="status-dot"></span> Currently running</div></div>' +
-    '<div class="stat"><div class="stat-icon">🚫</div><div class="lbl">Banned</div><div class="num">' + banned + '</div><div class="desc">Blocked licenses</div></div>' +
-    '<div class="stat"><div class="stat-icon">🪙</div><div class="lbl">Balance</div><div class="num">' + ME.balance + '</div><div class="desc">Available credits</div></div>' +
+    '<div class="dash-header">' +
+      '<span class="dash-burger">☰</span>' +
+      '<h1>Dashboard</h1>' +
+    '</div>' +
+
+    '<div class="stack-grid">' +
+      '<div class="stack-card">' +
+        '<div class="s-icon">🔑</div>' +
+        '<div class="s-lbl">Total Licenses</div>' +
+        '<div class="s-num">' + total + '</div>' +
+        '<div class="s-desc"><span style="color:#f59e0b">●</span> All time generated</div>' +
+      '</div>' +
+      '<div class="stack-card">' +
+        '<div class="s-icon">⚡</div>' +
+        '<div class="s-lbl">Active Keys</div>' +
+        '<div class="s-num">' + active + '</div>' +
+        '<div class="s-desc"><span class="status-dot"></span> Currently running</div>' +
+      '</div>' +
+      '<div class="stack-card">' +
+        '<div class="s-icon">📦</div>' +
+        '<div class="s-lbl">Unused Stock</div>' +
+        '<div class="s-num">' + unused + '</div>' +
+        '<div class="s-desc">🧺 Keys ready to sell</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="analytics-title">🚀 Quick Access</div>' +
+    '<div class="qa-grid">' +
+      '<button class="qa-btn" data-jump="keys"><span class="qa-icon">➕</span>Generate</button>' +
+      '<button class="qa-btn" data-jump="licenses"><span class="qa-icon">🔑</span>Licenses</button>' +
+      '<button class="qa-btn qa-full" data-jump="settings"><span class="qa-icon">⚙️</span>Settings</button>' +
+    '</div>' +
+
+    '<div class="user-card-dash">' +
+      '<div>' +
+        '<div class="uc-label">Username</div>' +
+        '<div class="uc-name">' + ME.username.toUpperCase() + '</div>' +
+      '</div>' +
+      '<span class="badge role-' + ME.role + ' uc-badge">' + ME.role.replace(/_/g, ' ') + '</span>' +
+    '</div>' +
+
+    '<div class="analytics-title">📊 Detailed Analytics</div>' +
+
+    '<div class="an-grid">' +
+      '<div class="an-card">' +
+        '<div class="an-icon green">🔑</div>' +
+        '<div class="an-num">' + total + '</div>' +
+        '<div class="an-lbl">Total Keys</div>' +
+        '<div class="an-sub">// ' + expired + ' expired</div>' +
+      '</div>' +
+      '<div class="an-card">' +
+        '<div class="an-icon blue">👥</div>' +
+        '<div class="an-num">' + active + '</div>' +
+        '<div class="an-lbl">Active Keys</div>' +
+        '<div class="an-sub">// running now</div>' +
+      '</div>' +
+      '<div class="an-card">' +
+        '<div class="an-icon red">🚫</div>' +
+        '<div class="an-num">' + unused + '</div>' +
+        '<div class="an-lbl">Unused Keys</div>' +
+        '<div class="an-sub">// never activated</div>' +
+      '</div>' +
+      '<div class="an-card">' +
+        '<div class="an-icon orange">⏸️</div>' +
+        '<div class="an-num">' + paused + '</div>' +
+        '<div class="an-lbl">Paused Keys</div>' +
+        '<div class="an-sub">// suspended</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="pie-card">' +
+      '<div class="pie-head">' +
+        '<h2>Pie Chart</h2>' +
+        '<span class="live-pill"><span class="pulse"></span>Live</span>' +
+      '</div>' +
+
+      '<div class="pie-wrap">' +
+        '<svg width="180" height="180" viewBox="0 0 140 140">' +
+          '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="16"/>' +
+          '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="#10b981" stroke-width="16"' +
+            ' stroke-dasharray="' + seg1 + ' ' + C + '"' +
+            ' stroke-dashoffset="0"' +
+            ' transform="rotate(-90 70 70)" stroke-linecap="butt"/>' +
+          '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="#ef4444" stroke-width="16"' +
+            ' stroke-dasharray="' + seg2 + ' ' + C + '"' +
+            ' stroke-dashoffset="-' + seg1 + '"' +
+            ' transform="rotate(-90 70 70)" stroke-linecap="butt"/>' +
+          '<circle cx="70" cy="70" r="' + R + '" fill="none" stroke="#f59e0b" stroke-width="16"' +
+            ' stroke-dasharray="' + seg3 + ' ' + C + '"' +
+            ' stroke-dashoffset="-' + (seg1 + seg2) + '"' +
+            ' transform="rotate(-90 70 70)" stroke-linecap="butt"/>' +
+          '<text x="70" y="68" text-anchor="middle" fill="#ffffff" font-size="20" font-weight="900">' + total + '</text>' +
+          '<text x="70" y="86" text-anchor="middle" fill="#7a7a9a" font-size="9" font-weight="800" letter-spacing="1">TOTAL</text>' +
+        '</svg>' +
+      '</div>' +
+
+      '<div class="pie-legend">' +
+        '<div>' +
+          '<div class="leg-row">' +
+            '<span class="leg-dot" style="background:#10b981"></span>' +
+            '<span class="leg-name">Active</span>' +
+            '<span class="leg-val">' + pieActive + '</span>' +
+          '</div>' +
+          '<div class="leg-bar" style="background:#10b981;width:' + activePct + '%"></div>' +
+        '</div>' +
+        '<div>' +
+          '<div class="leg-row">' +
+            '<span class="leg-dot" style="background:#ef4444"></span>' +
+            '<span class="leg-name">Unused</span>' +
+            '<span class="leg-val">' + pieUnused + '</span>' +
+          '</div>' +
+          '<div class="leg-bar" style="background:#ef4444;width:' + unusedPct + '%"></div>' +
+        '</div>' +
+        '<div>' +
+          '<div class="leg-row">' +
+            '<span class="leg-dot" style="background:#f59e0b"></span>' +
+            '<span class="leg-name">Paused</span>' +
+            '<span class="leg-val">' + piePaused + '</span>' +
+          '</div>' +
+          '<div class="leg-bar" style="background:#f59e0b;width:' + pausedPct + '%"></div>' +
+        '</div>' +
+        '<div>' +
+          '<div class="leg-row">' +
+            '<span class="leg-dot" style="background:#8b5cf6"></span>' +
+            '<span class="leg-name">Total</span>' +
+            '<span class="leg-val">' + total + '</span>' +
+          '</div>' +
+          '<div class="leg-bar" style="background:#8b5cf6;width:100%"></div>' +
+        '</div>' +
+      '</div>' +
     '</div>';
+
+  /* Quick access wiring */
+  el.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => {
+    const target = b.dataset.jump;
+    document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
+    const navBtn = document.querySelector('.nav-item[data-view="' + target + '"]');
+    if (navBtn) { navBtn.classList.add('active'); showView(target); }
+  });
 }
 views.overview = renderOverview;
 
