@@ -310,9 +310,10 @@ async function renderOverview(el) {
 }
 views.overview = renderOverview;
 
-/* ============ GENERATE KEYS (SEPARATE PAGE) ============ */
+/* ============ GENERATE KEYS (with RESULT PANEL) ============ */
 async function renderGenerateKeys(el) {
   const rank = ROLE_RANK[ME.role] || 0;
+  let lastGenerated = []; // keys from the last generation
 
   let pricingList = [];
   try {
@@ -335,53 +336,138 @@ async function renderGenerateKeys(el) {
       '<label>Devices<select id="genTier">' + tiers.map(t => '<option value="' + t + '">' + tLabel(t) + '</option>').join('') + '</select></label>' +
       '<label>Quantity<input id="genCount" type="number" min="1" max="' + (rank >= ROLE_RANK.admin ? 200 : 50) + '" value="1"></label>' +
       '</div>' +
-      '<div class="stat" style="margin-top:12px"><div class="lbl">Cost per key</div><div class="num" id="costPerKey">—</div><div class="desc">Total: <b id="costTotal">—</b> · Balance: <b>' + ME.balance + '</b></div></div>' +
+      '<div class="stat" style="margin-top:12px"><div class="lbl">Cost per key</div><div class="num" id="costPerKey">—</div><div class="desc">Total: <b id="costTotal">—</b> · Balance: <b id="balShow">' + ME.balance + '</b></div></div>' +
       '<button class="primary" id="genBtn" style="margin-top:12px">Generate Batch</button>';
   }
 
   el.innerHTML =
     '<h1>Generate Keys</h1>' +
     '<p class="muted" style="margin-bottom:20px">Pick duration & device count — cost is calculated automatically</p>' +
-    '<div class="card">' + genHTML + '</div>';
+    '<div class="card">' + genHTML + '</div>' +
+    '<div id="genResult"></div>';
 
-  if (pricingList.length) {
-    const upd = () => {
-      const d = +el.querySelector('#genDuration').value;
-      const t = el.querySelector('#genTier').value;
-      const q = +el.querySelector('#genCount').value || 1;
-      const r = pricingList.find(p => p.duration_days === d && p.device_tier === t);
-      const u = r ? r.credit_cost : '—';
-      el.querySelector('#costPerKey').textContent = u === '—' ? '—' : u + ' credits';
-      el.querySelector('#costTotal').textContent = u === '—' ? '—' : (u * q) + ' credits';
-    };
-    el.querySelector('#genDuration').onchange = upd;
-    el.querySelector('#genTier').onchange = upd;
-    el.querySelector('#genCount').oninput = upd;
-    upd();
+  if (pricingList.length === 0) return;
 
-    el.querySelector('#genBtn').onclick = async () => {
-      const duration_days = +el.querySelector('#genDuration').value;
-      const device_tier = el.querySelector('#genTier').value;
-      const count = +el.querySelector('#genCount').value;
+  const upd = () => {
+    const d = +el.querySelector('#genDuration').value;
+    const t = el.querySelector('#genTier').value;
+    const q = +el.querySelector('#genCount').value || 1;
+    const r = pricingList.find(p => p.duration_days === d && p.device_tier === t);
+    const u = r ? r.credit_cost : '—';
+    el.querySelector('#costPerKey').textContent = u === '—' ? '—' : u + ' credits';
+    el.querySelector('#costTotal').textContent = u === '—' ? '—' : (u * q) + ' credits';
+  };
+  el.querySelector('#genDuration').onchange = upd;
+  el.querySelector('#genTier').onchange = upd;
+  el.querySelector('#genCount').oninput = upd;
+  upd();
+
+  el.querySelector('#genBtn').onclick = async () => {
+    const duration_days = +el.querySelector('#genDuration').value;
+    const device_tier = el.querySelector('#genTier').value;
+    const count = +el.querySelector('#genCount').value;
+    const btn = el.querySelector('#genBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Generating…';
+
+    try {
       const r = await fetchT('/api/keys/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ count, duration_days, device_tier }),
       });
       const data = await r.json();
-      if (!r.ok) return toast('✗ ' + data.error);
+      if (!r.ok) {
+        toast('✗ ' + (data.error || 'Failed'));
+        btn.disabled = false;
+        btn.textContent = 'Generate Batch';
+        return;
+      }
+
       if (typeof data.balance === 'number') {
         document.getElementById('balanceVal').textContent = data.balance;
         ME.balance = data.balance;
+        const bs = el.querySelector('#balShow');
+        if (bs) bs.textContent = data.balance;
       }
-      toast('✓ Generated ' + data.keys.length + ' key(s) — ' + data.total_cost + ' credits');
-      renderGenerateKeys(el);
-    };
+
+      lastGenerated = (data.keys || []).map(k => k.key_value);
+      toast('✓ Generated ' + lastGenerated.length + ' key(s) — ' + data.total_cost + ' credits');
+      renderResultPanel(el, lastGenerated, duration_days, device_tier);
+      btn.disabled = false;
+      btn.textContent = 'Generate Batch';
+    } catch (e) {
+      toast('✗ Network error');
+      btn.disabled = false;
+      btn.textContent = 'Generate Batch';
+    }
+  };
+
+  if (lastGenerated.length > 0) {
+    renderResultPanel(el, lastGenerated, 0, '');
   }
 }
 views.keys = renderGenerateKeys;
 
-/* ============ LICENSE MANAGER (SEPARATE PAGE) ============ */
+/* ---------- RESULT PANEL (rendered below form after generation) ---------- */
+function renderResultPanel(el, keys, duration_days, device_tier) {
+  const box = el.querySelector('#genResult');
+  if (!box) return;
+
+  if (!keys || keys.length === 0) {
+    box.innerHTML = '';
+    return;
+  }
+
+  const joined = keys.join('\n');
+
+  let rowsHTML = '';
+  keys.forEach((k, i) => {
+    rowsHTML +=
+      '<div class="key-line">' +
+        '<span class="key-num">' + (i + 1) + '</span>' +
+        '<code class="key-code">' + k + '</code>' +
+        '<button class="btn-icon edit" data-single="' + k + '" title="Copy this key">📋</button>' +
+      '</div>';
+  });
+
+  const tierTxt = device_tier === 'unlimited' ? 'Unlimited' :
+                  (device_tier === '1' ? '1 device' : (device_tier || '') + ' devices');
+
+  box.innerHTML =
+    '<div class="card" style="margin-top:20px;border-color:rgba(16,185,129,0.5);background:rgba(16,185,129,0.05)">' +
+      '<div class="row" style="justify-content:space-between;margin-bottom:14px;flex-wrap:wrap">' +
+        '<div>' +
+          '<h2 style="margin:0">✅ Generated Keys (' + keys.length + ')</h2>' +
+          (duration_days ? '<p class="muted" style="margin-top:4px">Duration: ' + duration_days + ' days · ' + tierTxt + '</p>' : '') +
+        '</div>' +
+        '<button class="primary" id="copyAllBtn">📋 Copy All</button>' +
+      '</div>' +
+      '<div class="key-list">' + rowsHTML + '</div>' +
+      '<p class="muted" style="margin-top:12px;font-size:12px">⚠️ Save these keys now — you can also find them in License Manager.</p>' +
+    '</div>';
+
+  const copyAll = box.querySelector('#copyAllBtn');
+  copyAll.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(joined);
+      toast('✓ Copied ' + keys.length + ' key(s) to clipboard');
+    } catch (e) {
+      prompt('Copy these keys:', joined);
+    }
+  };
+
+  box.querySelectorAll('[data-single]').forEach(b => b.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(b.dataset.single);
+      toast('✓ Key copied');
+    } catch (e) {
+      prompt('Copy this key:', b.dataset.single);
+    }
+  });
+}
+
+/* ============ LICENSE MANAGER ============ */
 async function renderLicenseManager(el) {
   const rank = ROLE_RANK[ME.role] || 0;
   const canMaster = rank >= ROLE_RANK.owner;
