@@ -39,20 +39,18 @@ router.post('/verify', limiter, requireApiKey('verify'), (req, res) => {
     return res.json({ valid: false, reason: 'revoked', message: 'License revoked' });
   }
 
-  // === CASE 1: Never activated ===
+  /* CASE 1: Never activated — activate now */
   if (!row.used_at) {
-    // First activation! Check device limit
     const tier = row.device_tier || '1';
     const maxDevices = tier === 'unlimited' ? Infinity : parseInt(tier, 10);
     const count = db.prepare('SELECT COUNT(*) AS c FROM key_devices WHERE key_id=?').get(row.id).c;
 
     if (count >= maxDevices) {
-      // Shouldn't happen because we delete devices on reset, but defensive
       log('device_limit', row.id);
       return res.json({ valid: false, reason: 'device_limit', message: 'Device limit reached' });
     }
 
-    // Activate! Set used_at and status='used'
+    // First activation — record used_at so timer starts now
     db.prepare(`UPDATE keys SET device_id=?, status='used', used_at=? WHERE id=?`)
       .run(device_id, now, row.id);
     db.prepare('INSERT INTO key_devices (key_id, device_id) VALUES (?,?)').run(row.id, device_id);
@@ -69,7 +67,7 @@ router.post('/verify', limiter, requireApiKey('verify'), (req, res) => {
     });
   }
 
-  // === CASE 2: Already activated — check expiry ===
+  /* CASE 2: Already activated — check expiry */
   const expiresAt = row.used_at + row.duration_days * 86400;
   if (expiresAt < now) {
     log('expired', row.id);
@@ -81,17 +79,15 @@ router.post('/verify', limiter, requireApiKey('verify'), (req, res) => {
     });
   }
 
-  // === CASE 3: Check device binding ===
+  /* CASE 3: Device binding check */
   const tier = row.device_tier || '1';
   const maxDevices = tier === 'unlimited' ? Infinity : parseInt(tier, 10);
   const existing = db.prepare('SELECT 1 FROM key_devices WHERE key_id=? AND device_id=?').get(row.id, device_id);
 
   if (existing) {
-    // Known device — update last_seen
     db.prepare(`UPDATE key_devices SET last_seen=strftime('%s','now') WHERE key_id=? AND device_id=?`)
       .run(row.id, device_id);
   } else {
-    // New device — check limit
     const cnt = db.prepare('SELECT COUNT(*) AS c FROM key_devices WHERE key_id=?').get(row.id).c;
     if (cnt >= maxDevices) {
       log('device_limit', row.id);
@@ -151,7 +147,7 @@ router.get('/check', requireApiKey('verify'), (req, res) => {
   });
 });
 
-/* ---------- /reset_hwid ---------- */
+/* ---------- /reset_hwid — DEVICE-ONLY (does NOT reset timer) ---------- */
 router.post('/reset_hwid', limiter, requireApiKey('keys:write'), (req, res) => {
   const { key } = req.body || {};
   if (!key) return res.status(400).json({ status: 'error', message: 'key is required' });
@@ -160,11 +156,20 @@ router.post('/reset_hwid', limiter, requireApiKey('keys:write'), (req, res) => {
   if (ROLE_RANK[req.user.role] < ROLE_RANK.owner && row.owner_id !== req.user.id && row.created_by !== req.user.id)
     return res.status(403).json({ status: 'error', message: 'Not your key' });
 
-  db.prepare(`UPDATE keys SET device_id=NULL, status='active', used_at=NULL WHERE id=?`).run(row.id);
+  // Device-only reset — expiry timer untouched
+  db.prepare(`UPDATE keys SET device_id=NULL WHERE id=?`).run(row.id);
   db.prepare('DELETE FROM key_devices WHERE key_id=?').run(row.id);
   db.prepare(`INSERT INTO audit_logs (actor_id,actor_username,actor_role,action,target,meta,ip) VALUES (?,?,?,?,?,?,?)`)
     .run(req.user.id, req.user.username, req.user.role, 'api.reset_hwid', `key:${row.id}`, '{}', req.ip || null);
-  res.json({ status: 'success', message: 'Hardware identifier has been reset successfully.', key });
+
+  const now = Math.floor(Date.now() / 1000);
+  let message = 'Hardware identifier has been reset successfully.';
+  if (row.used_at) {
+    const expAt = row.used_at + row.duration_days * 86400;
+    if (expAt < now) message = 'Hardware reset, but license has already expired.';
+  }
+
+  res.json({ status: 'success', message, key });
 });
 
 /* ---------- /generate_key ---------- */
