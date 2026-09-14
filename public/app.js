@@ -98,6 +98,7 @@ function bindNav() {
 
 /* ============ VIEW ROUTER ============ */
 const views = {};
+let LICENSES_STATE = { page: 1, q: '', status: 'all' };
 
 async function showView(name) {
   const fn = views[name] || renderOverview;
@@ -112,7 +113,7 @@ async function showView(name) {
   }
 }
 
-/* ============ OVERVIEW (REDESIGNED) ============ */
+/* ============ OVERVIEW ============ */
 async function renderOverview(el) {
   let keys = [];
   let error = null;
@@ -134,7 +135,6 @@ async function renderOverview(el) {
     return;
   }
 
-  /* Compute stats */
   const now = Math.floor(Date.now() / 1000);
   const total = keys.length;
 
@@ -153,7 +153,6 @@ async function renderOverview(el) {
     k.used_at && (k.used_at + k.duration_days * 86400) < now
   ).length;
 
-  /* Pie chart numbers */
   const pieActive = active;
   const pieUnused = unused;
   const piePaused = paused;
@@ -162,7 +161,6 @@ async function renderOverview(el) {
   const unusedPct = Math.round((pieUnused / pieTotal) * 100);
   const pausedPct = 100 - activePct - unusedPct;
 
-  /* Pie chart radii */
   const R = 55;
   const C = 2 * Math.PI * R;
 
@@ -303,7 +301,6 @@ async function renderOverview(el) {
       '</div>' +
     '</div>';
 
-  /* Quick access wiring */
   el.querySelectorAll('[data-jump]').forEach(b => b.onclick = () => {
     const target = b.dataset.jump;
     document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
@@ -313,12 +310,9 @@ async function renderOverview(el) {
 }
 views.overview = renderOverview;
 
-/* ============ GENERATE + LICENSE MANAGER ============ */
-let LICENSES_STATE = { page: 1, q: '', status: 'all' };
-
-async function renderKeys(el) {
+/* ============ GENERATE KEYS (SEPARATE PAGE) ============ */
+async function renderGenerateKeys(el) {
   const rank = ROLE_RANK[ME.role] || 0;
-  const canMaster = rank >= ROLE_RANK.owner;
 
   let pricingList = [];
   try {
@@ -348,19 +342,7 @@ async function renderKeys(el) {
   el.innerHTML =
     '<h1>Generate Keys</h1>' +
     '<p class="muted" style="margin-bottom:20px">Pick duration & device count — cost is calculated automatically</p>' +
-    '<div class="card">' + genHTML + '</div>' +
-    '<div class="card"><h2>License Manager</h2>' +
-    '<div class="grid" style="margin-bottom:12px">' +
-    '<label>Search<input id="licSearch" placeholder="Key / Username / Device ID" value="' + LICENSES_STATE.q + '"></label>' +
-    '<label>Status<select id="licStatus">' +
-    '<option value="all"' + (LICENSES_STATE.status === 'all' ? ' selected' : '') + '>All</option>' +
-    '<option value="active"' + (LICENSES_STATE.status === 'active' ? ' selected' : '') + '>Active</option>' +
-    '<option value="used"' + (LICENSES_STATE.status === 'used' ? ' selected' : '') + '>Used</option>' +
-    '<option value="banned"' + (LICENSES_STATE.status === 'banned' ? ' selected' : '') + '>Banned</option>' +
-    '<option value="expired"' + (LICENSES_STATE.status === 'expired' ? ' selected' : '') + '>Expired</option>' +
-    '</select></label></div>' +
-    (canMaster ? '<div class="row" style="margin-bottom:12px"><button class="ghost small" id="masterReset">Reset ALL</button><button class="danger small" id="masterDelete">Delete ALL</button></div>' : '') +
-    '<div id="licTable"><div class="card">Loading…</div></div></div>';
+    '<div class="card">' + genHTML + '</div>';
 
   if (pricingList.length) {
     const upd = () => {
@@ -393,9 +375,33 @@ async function renderKeys(el) {
         ME.balance = data.balance;
       }
       toast('✓ Generated ' + data.keys.length + ' key(s) — ' + data.total_cost + ' credits');
-      renderKeys(el);
+      renderGenerateKeys(el);
     };
   }
+}
+views.keys = renderGenerateKeys;
+
+/* ============ LICENSE MANAGER (SEPARATE PAGE) ============ */
+async function renderLicenseManager(el) {
+  const rank = ROLE_RANK[ME.role] || 0;
+  const canMaster = rank >= ROLE_RANK.owner;
+
+  el.innerHTML =
+    '<h1>License Manager</h1>' +
+    '<p class="muted" style="margin-bottom:20px">View, search, and manage all your license keys</p>' +
+    '<div class="card">' +
+    '<div class="grid" style="margin-bottom:12px">' +
+    '<label>Search<input id="licSearch" placeholder="Key / Username / Device ID" value="' + LICENSES_STATE.q + '"></label>' +
+    '<label>Status<select id="licStatus">' +
+    '<option value="all"' + (LICENSES_STATE.status === 'all' ? ' selected' : '') + '>All</option>' +
+    '<option value="active"' + (LICENSES_STATE.status === 'active' ? ' selected' : '') + '>Active</option>' +
+    '<option value="used"' + (LICENSES_STATE.status === 'used' ? ' selected' : '') + '>Used</option>' +
+    '<option value="banned"' + (LICENSES_STATE.status === 'banned' ? ' selected' : '') + '>Banned</option>' +
+    '<option value="expired"' + (LICENSES_STATE.status === 'expired' ? ' selected' : '') + '>Expired</option>' +
+    '</select></label></div>' +
+    (canMaster ? '<div class="row" style="margin-bottom:12px"><button class="ghost small" id="masterReset">Reset ALL</button><button class="danger small" id="masterDelete">Delete ALL</button></div>' : '') +
+    '<div id="licTable"><div class="card">Loading…</div></div>' +
+    '</div>';
 
   const reload = async () => {
     const w = el.querySelector('#licTable');
@@ -405,7 +411,7 @@ async function renderKeys(el) {
       const data = await res.json();
       renderLicTable(w, data, el);
     } catch (e) {
-      w.innerHTML = '<div class="card">Failed to load keys.</div>';
+      w.innerHTML = '<div class="card">Failed to load keys. <button class="ghost small" onclick="location.reload()">Retry</button></div>';
     }
   };
 
@@ -429,7 +435,7 @@ async function renderKeys(el) {
     const r = await fetchT('/api/keys/master/reset-all', { method: 'POST' });
     const d = await r.json();
     toast('✓ Reset ' + d.affected + ' keys');
-    renderKeys(el);
+    reload();
   };
   const md = el.querySelector('#masterDelete');
   if (md) md.onclick = async () => {
@@ -437,12 +443,12 @@ async function renderKeys(el) {
     const r = await fetchT('/api/keys/master/delete-all', { method: 'POST' });
     const d = await r.json();
     toast('✓ Deleted ' + d.affected + ' keys');
-    renderKeys(el);
+    reload();
   };
 }
-views.keys = renderKeys;
-views.licenses = renderKeys;
+views.licenses = renderLicenseManager;
 
+/* ============ SHARED LICENSE TABLE ============ */
 function renderLicTable(wrap, data, rootEl) {
   const keys = data.keys || [];
   const pg = data.pagination || { page: 1, per_page: 20, total: 0, total_pages: 1 };
@@ -491,27 +497,27 @@ function renderLicTable(wrap, data, rootEl) {
 
   wrap.querySelectorAll('[data-details]').forEach(b => b.onclick = () => openDetailsModal(+b.dataset.details, rootEl));
   wrap.querySelectorAll('[data-reset]').forEach(b => b.onclick = async () => {
-    if (!confirm('Reset this license?')) return;
+    if (!confirm('Reset this license? The device binding will be cleared.')) return;
     const r = await fetchT('/api/keys/' + b.dataset.reset + '/reset', { method: 'POST' });
     if (!r.ok) return toast('✗ Reset failed');
     toast('✓ License reset');
     refreshLic(rootEl);
   });
   wrap.querySelectorAll('[data-ban]').forEach(b => b.onclick = async () => {
-    if (!confirm('Ban this license?')) return;
+    if (!confirm('Ban this license? User will not be able to log in.')) return;
     const r = await fetchT('/api/keys/' + b.dataset.ban + '/ban', { method: 'POST' });
     if (!r.ok) return toast('✗ failed');
-    toast('✓ Banned');
+    toast('✓ License banned');
     refreshLic(rootEl);
   });
   wrap.querySelectorAll('[data-unban]').forEach(b => b.onclick = async () => {
     const r = await fetchT('/api/keys/' + b.dataset.unban + '/unban', { method: 'POST' });
     if (!r.ok) return toast('✗ failed');
-    toast('✓ Unbanned');
+    toast('✓ License unbanned');
     refreshLic(rootEl);
   });
   wrap.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-    if (!confirm('Delete permanently?')) return;
+    if (!confirm('Delete this license permanently?')) return;
     const r = await fetchT('/api/keys/' + b.dataset.del, { method: 'DELETE' });
     if (!r.ok) return toast('✗ failed');
     toast('✓ Deleted');
