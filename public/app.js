@@ -174,10 +174,7 @@ let LICENSES_STATE = { page: 1, q: '', status: 'all' };
 
 async function renderKeys(el) {
   const rank = ROLE_RANK[ME.role];
-  const canDelete    = rank >= ROLE_RANK.admin;
-  const canResetLink = rank >= ROLE_RANK.admin;
-  const canBan       = rank >= ROLE_RANK.owner;
-  const canMaster    = rank >= ROLE_RANK.owner;
+  const canMaster = rank >= ROLE_RANK.owner;
 
   let pricingList = [];
   try {
@@ -186,6 +183,10 @@ async function renderKeys(el) {
   } catch (e) { console.error('pricing fetch error:', e); }
 
   const durations = [...new Set(pricingList.map(p => p.duration_days))].sort((a,b)=>a-b);
+  const availableTiers = ['1','2','unlimited'].filter(t =>
+    pricingList.some(p => p.device_tier === t)
+  );
+  const tierLabel = t => t === 'unlimited' ? 'Unlimited' : (t === '1' ? '1 device' : t + ' devices');
 
   el.innerHTML = `
     <h1>Generate Keys</h1>
@@ -203,9 +204,7 @@ async function renderKeys(el) {
           </label>
           <label>Devices
             <select id="genTier">
-              <option value="1">1 device</option>
-              <option value="2">2 devices</option>
-              <option value="unlimited">Unlimited</option>
+              ${availableTiers.map(t => `<option value="${t}">${tierLabel(t)}</option>`).join('')}
             </select>
           </label>
           <label>Quantity<input id="genCount" type="number" min="1" max="${rank >= ROLE_RANK.admin ? 200 : 50}" value="1"></label>
@@ -287,7 +286,7 @@ async function renderKeys(el) {
     try {
       const res = await fetchT(`/api/keys?page=${LICENSES_STATE.page}&per_page=20&q=${encodeURIComponent(LICENSES_STATE.q)}&status=${LICENSES_STATE.status}`);
       const data = await res.json();
-      renderLicTable(wrap, data, { canDelete, canResetLink, canBan, canMaster }, el);
+      renderLicTable(wrap, data, el);
     } catch (e) {
       wrap.innerHTML = '<div class="card">Failed to load keys. <button class="ghost small" onclick="location.reload()">Retry</button></div>';
     }
@@ -323,7 +322,7 @@ async function renderKeys(el) {
   });
 }
 
-function renderLicTable(wrap, data, perms, rootEl) {
+function renderLicTable(wrap, data, rootEl) {
   const keys = data.keys || [];
   const pagination = data.pagination || { page: 1, per_page: 20, total: 0, total_pages: 1 };
   wrap.innerHTML = `
@@ -350,12 +349,12 @@ function renderLicTable(wrap, data, perms, rootEl) {
                 <td>${k.owner_name ?? '—'}</td>
                 <td>${new Date(k.created_at*1000).toLocaleDateString()}</td>
                 <td style="text-align:right;white-space:nowrap">
-                  <button class="btn-icon" data-details="${k.id}" title="Details">👁️</button>
-                  ${perms.canBan ? (k.banned
+                  <button class="btn-icon" data-details="${k.id}" title="View details">👁️</button>
+                  <button class="btn-icon edit" data-reset="${k.id}" title="Reset HWID">🔄</button>
+                  ${k.banned
                     ? `<button class="btn-icon" data-unban="${k.id}" title="Unban">↩️</button>`
-                    : `<button class="btn-icon delete" data-ban="${k.id}" title="Ban">🚫</button>`) : ''}
-                  ${perms.canResetLink ? `<button class="btn-icon edit" data-link="${k.id}" title="Reset link">🔗</button>` : ''}
-                  ${perms.canDelete ? `<button class="btn-icon delete" data-del="${k.id}" title="Delete">🗑️</button>` : ''}
+                    : `<button class="btn-icon delete" data-ban="${k.id}" title="Ban">🚫</button>`}
+                  <button class="btn-icon delete" data-del="${k.id}" title="Delete">🗑️</button>
                 </td>
               </tr>`;
           }).join('')}
@@ -380,26 +379,25 @@ function renderLicTable(wrap, data, perms, rootEl) {
   });
 
   wrap.querySelectorAll('[data-details]').forEach(b => b.onclick = () => openDetailsModal(+b.dataset.details, rootEl));
+  wrap.querySelectorAll('[data-reset]').forEach(b => b.onclick = async () => {
+    if (!confirm('Reset this license? The device binding will be cleared.')) return;
+    const r = await fetchT(`/api/keys/${b.dataset.reset}/reset`, { method: 'POST' });
+    if (!r.ok) return toast('✗ Reset failed');
+    toast('✓ License reset'); refreshLic(rootEl);
+  });
   wrap.querySelectorAll('[data-ban]').forEach(b => b.onclick = async () => {
-    if (!confirm('Ban this key? Users will not be able to log in.')) return;
+    if (!confirm('Ban this license? User will not be able to log in.')) return;
     const r = await fetchT(`/api/keys/${b.dataset.ban}/ban`, { method: 'POST' });
     if (!r.ok) return toast('✗ failed');
-    toast('✓ Key banned'); refreshLic(rootEl);
+    toast('✓ License banned'); refreshLic(rootEl);
   });
   wrap.querySelectorAll('[data-unban]').forEach(b => b.onclick = async () => {
     const r = await fetchT(`/api/keys/${b.dataset.unban}/unban`, { method: 'POST' });
     if (!r.ok) return toast('✗ failed');
-    toast('✓ Key unbanned'); refreshLic(rootEl);
-  });
-  wrap.querySelectorAll('[data-link]').forEach(b => b.onclick = async () => {
-    const r = await fetchT(`/api/keys/${b.dataset.link}/reset-link`, { method: 'POST' });
-    const d = await r.json();
-    if (!r.ok) return toast('✗ ' + d.error);
-    await navigator.clipboard?.writeText(location.origin + d.url).catch(()=>{});
-    toast('✓ Reset link copied');
+    toast('✓ License unbanned'); refreshLic(rootEl);
   });
   wrap.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
-    if (!confirm('Delete this key permanently?')) return;
+    if (!confirm('Delete this license permanently?')) return;
     const r = await fetchT(`/api/keys/${b.dataset.del}`, { method: 'DELETE' });
     if (!r.ok) return toast('✗ failed');
     toast('✓ Deleted'); refreshLic(rootEl);
@@ -473,7 +471,7 @@ async function openDetailsModal(id, rootEl) {
   }
 }
 
-/* ============ PRICING (Owner+) ============ */
+/* ============ PRICING ============ */
 async function renderPricing(el) {
   const { pricing = [] } = await fetchT('/api/pricing').then(r => r.json());
   el.innerHTML = `
@@ -734,7 +732,7 @@ async function renderMaster(el) {
   };
 }
 
-/* ============ API KEYS (admin page) ============ */
+/* ============ API KEYS ============ */
 async function renderApiKeys(el) {
   const { apiKeys = [] } = await fetchT('/api/apikeys').then(r => r.json());
   el.innerHTML = `
@@ -998,12 +996,23 @@ async function renderApiDocs(el) {
 async function renderSettings(el) {
   const rank = ROLE_RANK[ME.role];
   const canEditBranding = rank >= ROLE_RANK.owner;
+  const canManageLinks = rank >= ROLE_RANK.admin;
+
   let branding = { brand_name:'', brand_logo:'', brand_tagline:'', brand_footer:'', brand_color:'#7c3aed' };
   try { branding = await fetchT('/api/branding').then(r => r.json()); } catch {}
+
+  let links = [];
+  if (canManageLinks) {
+    try {
+      const d = await fetchT('/api/reset-links').then(r => r.json());
+      links = d.links || [];
+    } catch {}
+  }
 
   el.innerHTML = `
     <h1>Settings</h1>
     <p class="muted" style="margin-bottom:20px">Manage your account & site</p>
+
     <div class="card">
       <h2>Profile</h2>
       <div class="grid">
@@ -1012,6 +1021,45 @@ async function renderSettings(el) {
         <label>Balance<input value="${ME.balance}" disabled></label>
       </div>
     </div>
+
+    ${canManageLinks ? `
+    <div class="card">
+      <h2>🔗 Reset Links</h2>
+      <p class="muted" style="margin-bottom:14px">
+        Share these links with customers so they can reset their own device. The link auto-copies when created.
+      </p>
+
+      <div class="grid">
+        <label>Note (optional)
+          <input id="rlNote" placeholder="e.g. For customer Ahmed" maxlength="80">
+        </label>
+        <label>Max uses (optional, empty = unlimited)
+          <input id="rlMaxUses" type="number" min="1" placeholder="unlimited">
+        </label>
+      </div>
+      <button class="primary" id="rlCreate" style="margin-top:8px">🔗 Create Reset Link</button>
+
+      <div class="table-wrap" style="margin-top:18px">
+        <table>
+          <thead><tr><th>Link</th><th>Note</th><th>Uses</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead>
+          <tbody>
+            ${links.length === 0 ? '<tr><td colspan="5" class="muted" style="text-align:center;padding:20px">No reset links yet</td></tr>' :
+              links.map(l => `
+                <tr>
+                  <td><code>${l.token.slice(0, 16)}…</code></td>
+                  <td>${l.note || '—'}</td>
+                  <td>${l.uses}${l.max_uses ? ' / ' + l.max_uses : ''}</td>
+                  <td>${new Date(l.created_at*1000).toLocaleDateString()}</td>
+                  <td style="text-align:right;white-space:nowrap">
+                    <button class="btn-icon edit" data-copy="${l.token}" title="Copy URL">📋</button>
+                    <button class="btn-icon delete" data-rm="${l.id}" title="Delete">🗑️</button>
+                  </td>
+                </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ''}
+
     ${canEditBranding ? `
     <div class="card">
       <h2>🎨 Branding</h2>
@@ -1029,6 +1077,44 @@ async function renderSettings(el) {
       </div>
     </div>` : ''}
   `;
+
+  el.querySelector('#rlCreate')?.addEventListener('click', async () => {
+    const note = el.querySelector('#rlNote').value.trim();
+    const maxUsesRaw = el.querySelector('#rlMaxUses').value.trim();
+    const max_uses = maxUsesRaw ? parseInt(maxUsesRaw, 10) : '';
+    const r = await fetchT('/api/reset-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note, max_uses }),
+    });
+    const d = await r.json();
+    if (!r.ok) return toast('✗ ' + d.error);
+    const url = location.origin + d.url;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('✓ Link created & copied to clipboard!');
+    } catch {
+      toast('✓ Link created (copy manually below)');
+    }
+    renderSettings(el);
+  });
+
+  el.querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {
+    const url = location.origin + '/reset.html?token=' + b.dataset.copy;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('✓ Copied to clipboard');
+    } catch {
+      prompt('Copy this URL:', url);
+    }
+  });
+
+  el.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+    if (!confirm('Delete this reset link?')) return;
+    const r = await fetchT(`/api/reset-links/${b.dataset.rm}`, { method: 'DELETE' });
+    if (!r.ok) return toast('✗ failed');
+    toast('✓ Deleted'); renderSettings(el);
+  });
 
   el.querySelector('#saveBranding')?.addEventListener('click', async () => {
     const payload = {
