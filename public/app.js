@@ -94,6 +94,7 @@ const views = {
   master: renderMaster,
   apikeys: renderApiKeys,
   apidocs: renderApiDocs,
+  apitester: renderApiTester,
   settings: renderSettings,
   pricing: renderPricing,
 };
@@ -128,7 +129,6 @@ async function renderOverview(el) {
     } else {
       loadError = true;
       errMsg = 'HTTP ' + res.status;
-      try { const txt = await res.text(); errMsg += ' — ' + txt.slice(0, 200); } catch {}
     }
   } catch (e) {
     loadError = true;
@@ -140,7 +140,6 @@ async function renderOverview(el) {
       <div class="card">
         <h2>⚠️ Load failed</h2>
         <p class="muted" style="margin-top:8px;word-break:break-all"><b>Reason:</b> ${errMsg}</p>
-        <p class="muted" style="margin-top:8px">Render free tier sleeps. Wait 60 seconds, then retry.</p>
         <button class="primary" style="margin-top:12px" onclick="location.reload()">🔄 Retry</button>
       </div>`;
     return;
@@ -288,7 +287,7 @@ async function renderKeys(el) {
       const data = await res.json();
       renderLicTable(wrap, data, el);
     } catch (e) {
-      wrap.innerHTML = '<div class="card">Failed to load keys. <button class="ghost small" onclick="location.reload()">Retry</button></div>';
+      wrap.innerHTML = '<div class="card">Failed to load keys.</div>';
     }
   };
 
@@ -386,7 +385,7 @@ function renderLicTable(wrap, data, rootEl) {
     toast('✓ License reset'); refreshLic(rootEl);
   });
   wrap.querySelectorAll('[data-ban]').forEach(b => b.onclick = async () => {
-    if (!confirm('Ban this license? User will not be able to log in.')) return;
+    if (!confirm('Ban this license?')) return;
     const r = await fetchT(`/api/keys/${b.dataset.ban}/ban`, { method: 'POST' });
     if (!r.ok) return toast('✗ failed');
     toast('✓ License banned'); refreshLic(rootEl);
@@ -802,6 +801,163 @@ async function renderApiKeys(el) {
   });
 }
 
+/* ============ API TESTER (BUILT-IN) ============ */
+async function renderApiTester(el) {
+  let apiKey = null;
+  try {
+    const r = await fetchT('/api/apikeys/current');
+    if (r.ok) {
+      const d = await r.json();
+      apiKey = d.apiKey;
+    }
+  } catch {}
+
+  const keyFull = apiKey && apiKey.full ? apiKey.full : '';
+
+  el.innerHTML = `
+    <h1>🧪 API Tester</h1>
+    <p class="muted" style="margin-bottom:20px">
+      Test your external API endpoints directly from the dashboard. No ReqBin needed.
+    </p>
+
+    <div class="card">
+      <h2>Endpoint</h2>
+      <div class="grid">
+        <label>Select Endpoint
+          <select id="epSelect">
+            <option value="check_balance">POST /check_balance</option>
+            <option value="reset_hwid">POST /reset_hwid</option>
+            <option value="generate_key">POST /generate_key</option>
+            <option value="delete_key">POST /delete_key</option>
+            <option value="register_device">POST /register_device</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="epFields" style="margin-top:8px"></div>
+
+      <div class="row" style="margin-top:12px">
+        <button class="primary" id="testBtn">▶ Run Test</button>
+        <button class="ghost" id="clearBtn">✕ Clear</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Request Preview</h2>
+      <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1.2px;font-weight:900;margin-bottom:6px">URL</div>
+      <pre style="background:rgba(0,0,0,0.35);padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;color:#c4b5fd;margin-bottom:14px"><code style="background:none;padding:0" id="previewUrl"></code></pre>
+      <div class="lbl" style="font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:1.2px;font-weight:900;margin-bottom:6px">Body (JSON)</div>
+      <pre style="background:rgba(0,0,0,0.35);padding:12px;border-radius:8px;overflow-x:auto;font-size:12px;color:#86efac"><code style="background:none;padding:0" id="previewBody"></code></pre>
+    </div>
+
+    <div class="card">
+      <h2>Response</h2>
+      <div id="responseBlock" class="muted">No test run yet. Click "Run Test" above.</div>
+    </div>
+  `;
+
+  const fieldsEl = el.querySelector('#epFields');
+  const previewUrl = el.querySelector('#previewUrl');
+  const previewBody = el.querySelector('#previewBody');
+  const responseBlock = el.querySelector('#responseBlock');
+
+  const field = (id, label, val = '', placeholder = '') => `
+    <label>${label}
+      <input id="${id}" value="${val}" placeholder="${placeholder}" autocomplete="off">
+    </label>
+  `;
+
+  function renderFields() {
+    const ep = el.querySelector('#epSelect').value;
+    if (ep === 'check_balance') {
+      fieldsEl.innerHTML = `<p class="muted">No extra fields needed — API key is added automatically.</p>`;
+    } else if (ep === 'reset_hwid') {
+      fieldsEl.innerHTML = field('f_key', 'License Key', '', 'ALIYA-XXXX-XXXX-XXXX');
+    } else if (ep === 'generate_key') {
+      fieldsEl.innerHTML = `
+        <div class="grid">
+          ${field('f_days', 'Days (must match pricing rule)', '30')}
+          ${field('f_count', 'Count (max 10)', '1')}
+          ${field('f_device', 'Device Tier (1/2/unlimited)', '1')}
+        </div>`;
+    } else if (ep === 'delete_key') {
+      fieldsEl.innerHTML = field('f_key', 'License Key', '', 'ALIYA-XXXX-XXXX-XXXX');
+    } else if (ep === 'register_device') {
+      fieldsEl.innerHTML = `
+        <div class="grid">
+          ${field('f_key', 'License Key', '', 'ALIYA-XXXX-XXXX-XXXX')}
+          ${field('f_hwid', 'Device HWID', '', 'device-fingerprint-123')}
+        </div>`;
+    }
+    updatePreview();
+  }
+
+  function buildBody() {
+    const ep = el.querySelector('#epSelect').value;
+    const body = { api_key: keyFull };
+    if (ep === 'reset_hwid' || ep === 'delete_key') {
+      body.key = (el.querySelector('#f_key')?.value || '').trim();
+    } else if (ep === 'generate_key') {
+      body.days = +el.querySelector('#f_days').value || 30;
+      body.count = +el.querySelector('#f_count').value || 1;
+      body.device = (el.querySelector('#f_device').value || '1').trim();
+    } else if (ep === 'register_device') {
+      body.key = (el.querySelector('#f_key')?.value || '').trim();
+      body.hwid = (el.querySelector('#f_hwid')?.value || '').trim();
+    }
+    return body;
+  }
+
+  function updatePreview() {
+    const ep = el.querySelector('#epSelect').value;
+    previewUrl.textContent = location.origin + '/api/external/' + ep;
+    previewBody.textContent = JSON.stringify(buildBody(), null, 2);
+  }
+
+  el.querySelector('#epSelect').onchange = renderFields;
+  renderFields();
+
+  el.querySelector('#testBtn').onclick = async () => {
+    const ep = el.querySelector('#epSelect').value;
+    const body = buildBody();
+    const url = '/api/external/' + ep;
+
+    responseBlock.innerHTML = `<p class="muted">⏳ Sending…</p>`;
+
+    try {
+      const res = await fetchT(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }, 25000);
+      const text = await res.text();
+      let pretty = text;
+      try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch {}
+      const statusColor = res.ok ? 'var(--ok)' : 'var(--danger)';
+      responseBlock.innerHTML = `
+        <div class="row" style="margin-bottom:10px">
+          <span class="badge" style="background:${statusColor};color:#fff;border:none">
+            ${res.status} ${res.statusText || ''}
+          </span>
+          <span class="muted">${url}</span>
+        </div>
+        <pre style="background:rgba(0,0,0,0.4);padding:14px;border-radius:10px;overflow-x:auto;font-size:12.5px;color:#86efac;white-space:pre-wrap;word-break:break-all"><code style="background:none;padding:0">${pretty}</code></pre>
+      `;
+    } catch (e) {
+      responseBlock.innerHTML = `
+        <div class="card" style="border-color:var(--danger)">
+          <h2 style="font-size:14px;color:#fca5a5">✗ Request failed</h2>
+          <p class="muted" style="margin-top:6px;word-break:break-all">${e.message || e}</p>
+        </div>`;
+    }
+  };
+
+  el.querySelector('#clearBtn').onclick = () => {
+    renderFields();
+    responseBlock.innerHTML = '<p class="muted">No test run yet. Click "Run Test" above.</p>';
+  };
+}
+
 /* ============ API DOCS ============ */
 async function renderApiDocs(el) {
   const origin = location.origin;
@@ -814,7 +970,7 @@ async function renderApiDocs(el) {
       const d = await r.json();
       apiKey = d.apiKey;
     }
-  } catch (e) { console.error('api key fetch:', e); }
+  } catch {}
 
   const endpoint = (method, color, title, url, body, resp, curl) => `
     <div class="card" style="padding:0;overflow:hidden;margin-top:16px">
@@ -892,12 +1048,12 @@ async function renderApiDocs(el) {
       `{
   "status": "success",
   "message": "Hardware identifier has been reset successfully.",
-  "key": "DEMO-XXXX-XXXX-XXXX"
+  "key": "ALIYA-XXXX-XXXX-XXXX"
 }`,
       `curl -X POST ${baseUrl}/reset_hwid \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: YOUR_API_KEY" \\
-  -d '{"key":"DEMO-XXXX-XXXX-XXXX"}'`
+  -d '{"key":"ALIYA-XXXX-XXXX-XXXX"}'`
     )}
 
     ${endpoint('POST', 'linear-gradient(90deg,#10b981,#059669)', 'ENDPOINT: GENERATE KEY', `${baseUrl}/generate_key`,
@@ -907,7 +1063,7 @@ async function renderApiDocs(el) {
        <tr><td><code>device</code></td><td>string</td><td><code>1</code> · <code>2</code> · <code>unlimited</code> (optional, default 1)</td></tr>`,
       `{
   "status": "success",
-  "keys": ["DEMO-AB12-CD34-EF56"],
+  "keys": ["ALIYA-AB12-CD34-EF56"],
   "count": 1,
   "total_cost": 5,
   "new_balance": 95
@@ -945,16 +1101,16 @@ async function renderApiDocs(el) {
       `curl -X POST ${baseUrl}/register_device \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: YOUR_API_KEY" \\
-  -d '{"key":"DEMO-XXXX-XXXX-XXXX","hwid":"dev-abc-123"}'`
+  -d '{"key":"ALIYA-XXXX-XXXX-XXXX","hwid":"dev-abc-123"}'`
     )}
 
     ${endpoint('POST', 'linear-gradient(90deg,#ef4444,#dc2626)', 'ENDPOINT: CHECK BALANCE', `${baseUrl}/check_balance`,
       `<tr><td><code>api_key</code></td><td>string</td><td>Your API Key</td></tr>`,
       `{
   "status": "success",
-  "username": "reseller1",
-  "credits": 150,
-  "role": "reseller"
+  "username": "root",
+  "credits": 999999,
+  "role": "super_hide_owner"
 }`,
       `curl -X POST ${baseUrl}/check_balance \\
   -H "Content-Type: application/json" \\
@@ -1067,7 +1223,7 @@ async function renderSettings(el) {
     <div class="card" style="border-color:rgba(239,68,68,0.5);background:rgba(239,68,68,0.04)">
       <h2>🌐 Master Reset Link (Owner Only)</h2>
       <p class="muted" style="margin-bottom:14px;color:#fca5a5">
-        ⚠️ This link can reset ANY key on the entire site, regardless of owner. Only share with trusted staff.
+        ⚠️ This link can reset ANY key on the entire site, regardless of owner.
       </p>
 
       <button class="danger" id="rlMasterCreate">🌐 Generate Master Reset Link</button>
@@ -1134,7 +1290,7 @@ async function renderSettings(el) {
 
   el.querySelector('#rlMasterCreate')?.addEventListener('click', async () => {
     if (!confirm('Create a MASTER reset link? This can reset ANY key on the site.')) return;
-    const note = prompt('Note (optional, e.g. "Master recovery link"):', 'Master Reset Link') || '';
+    const note = prompt('Note (optional):', 'Master Reset Link') || '';
     const r = await fetchT('/api/reset-links', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
