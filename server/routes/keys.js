@@ -17,7 +17,7 @@ function buildKey() {
   return `${getPrefix()}-${a}-${b}-${c}`;
 }
 
-/* ---------- LIST ---------- */
+/* ---------- LIST with computed effective_status ---------- */
 router.get('/', (req, res) => {
   const me = req.user;
   const rank = ROLE_RANK[me.role];
@@ -29,6 +29,7 @@ router.get('/', (req, res) => {
   const where = [];
   const params = [];
 
+  // Role scope
   if (rank >= ROLE_RANK.owner) {
     // all
   } else if (rank === ROLE_RANK.admin) {
@@ -39,12 +40,16 @@ router.get('/', (req, res) => {
     params.push(me.id);
   }
 
-  if (status === 'active')      where.push("k.status='active' AND k.banned=0");
-  else if (status === 'used')   where.push("k.status='used'   AND k.banned=0");
-  else if (status === 'banned') where.push("k.banned=1");
-  else if (status === 'expired') where.push(
-    "(k.used_at IS NOT NULL AND (k.used_at + k.duration_days*86400) < strftime('%s','now'))"
-  );
+  // Status filter — using computed logic
+  if (status === 'active') {
+    where.push("k.banned=0 AND k.status='used' AND k.used_at IS NOT NULL AND (k.used_at + k.duration_days*86400) > strftime('%s','now')");
+  } else if (status === 'unused') {
+    where.push("k.banned=0 AND k.status='active' AND k.used_at IS NULL");
+  } else if (status === 'expired') {
+    where.push("k.banned=0 AND k.used_at IS NOT NULL AND (k.used_at + k.duration_days*86400) < strftime('%s','now')");
+  } else if (status === 'banned') {
+    where.push("k.banned=1");
+  }
 
   if (q) {
     where.push(`(k.key_value LIKE ? OR u.username LIKE ? OR k.device_id LIKE ?)`);
@@ -62,7 +67,18 @@ router.get('/', (req, res) => {
 
   const rows = db.prepare(`
     SELECT k.*, u.username AS owner_name,
-      (SELECT COUNT(*) FROM key_devices kd WHERE kd.key_id = k.id) AS device_count
+      (SELECT COUNT(*) FROM key_devices kd WHERE kd.key_id = k.id) AS device_count,
+      CASE
+        WHEN k.banned = 1 THEN 'banned'
+        WHEN k.status = 'revoked' THEN 'revoked'
+        WHEN k.used_at IS NULL THEN 'unused'
+        WHEN (k.used_at + k.duration_days*86400) < strftime('%s','now') THEN 'expired'
+        ELSE 'active'
+      END AS effective_status,
+      CASE
+        WHEN k.used_at IS NOT NULL THEN (k.used_at + k.duration_days*86400)
+        ELSE NULL
+      END AS expires_at
     FROM keys k
     LEFT JOIN users u ON u.id = k.owner_id
     ${whereSQL}
@@ -89,7 +105,18 @@ router.get('/:id/details',
     const k = db.prepare(`
       SELECT k.*, 
         u.username AS owner_name,
-        c.username AS creator_name
+        c.username AS creator_name,
+        CASE
+          WHEN k.banned = 1 THEN 'banned'
+          WHEN k.status = 'revoked' THEN 'revoked'
+          WHEN k.used_at IS NULL THEN 'unused'
+          WHEN (k.used_at + k.duration_days*86400) < strftime('%s','now') THEN 'expired'
+          ELSE 'active'
+        END AS effective_status,
+        CASE
+          WHEN k.used_at IS NOT NULL THEN (k.used_at + k.duration_days*86400)
+          ELSE NULL
+        END AS expires_at
       FROM keys k
       LEFT JOIN users u ON u.id = k.owner_id
       LEFT JOIN users c ON c.id = k.created_by
@@ -133,9 +160,11 @@ router.post('/generate', requireRole('reseller'), (req, res) => {
       for (let a = 0; a < 5; a++) {
         const kv = buildKey();
         try {
+          // status = 'active' means "available/unused" until first activation
+          // used_at = NULL until first APK login
           const info = db.prepare(`
-            INSERT INTO keys (key_value, prefix, duration_days, device_tier, created_by, owner_id)
-            VALUES (?,?,?,?,?,?)
+            INSERT INTO keys (key_value, prefix, duration_days, device_tier, status, created_by, owner_id, used_at)
+            VALUES (?,?,?,?, 'active', ?, ?, NULL)
           `).run(kv, getPrefix(), days, tier, me.id, me.id);
           created.push({ id: info.lastInsertRowid, key_value: kv });
           break;
@@ -230,7 +259,7 @@ router.post('/prefix', requireRole('owner'), (req, res) => {
 });
 
 /* ============================================================
-   PUBLIC ROUTER — NO AUTH
+   PUBLIC ROUTER (no auth)
    ============================================================ */
 export const publicResetRouter = express.Router();
 
@@ -238,80 +267,54 @@ publicResetRouter.post('/public/reset', (req, res) => {
   let { key, token } = req.body || {};
 
   if (!token || typeof token !== 'string') {
-    return res.status(400).json({
-      status: 'error',
-      message: 'Reset link required. Please use a valid reset URL.'
-    });
+    return res.status(400).json({ status: 'error', message: 'Reset link required. Please use a valid reset URL.' });
   }
   if (!key || typeof key !== 'string') {
-    return res.status(400).json({
-      status: 'error',
-      message: 'License key is required'
-    });
+    return res.status(400).json({ status: 'error', message: 'License key is required' });
   }
 
   key = key.trim();
 
-  // Detect if user pasted a URL instead of a key
   if (key.startsWith('http://') || key.startsWith('https://')) {
-    return res.status(400).json({
-      status: 'error',
-      message: 'You pasted a URL. Please paste your LICENSE KEY (e.g. ALIYA-XXXX-XXXX-XXXX)'
-    });
+    return res.status(400).json({ status: 'error', message: 'You pasted a URL. Please paste your LICENSE KEY (e.g. ALIYA-XXXX-XXXX-XXXX)' });
   }
 
   const link = db.prepare('SELECT * FROM reset_links WHERE token=? AND active=1').get(token);
   if (!link) {
-    return res.status(404).json({
-      status: 'error',
-      message: 'Invalid or expired reset link'
-    });
+    return res.status(404).json({ status: 'error', message: 'Invalid or expired reset link' });
   }
-
   if (link.max_uses && link.uses >= link.max_uses) {
-    return res.status(403).json({
-      status: 'error',
-      message: 'This reset link has reached its maximum uses'
-    });
+    return res.status(403).json({ status: 'error', message: 'This reset link has reached its maximum uses' });
   }
 
   const keyRow = db.prepare('SELECT * FROM keys WHERE key_value = ?').get(key);
   if (!keyRow) {
-    return res.status(404).json({
-      status: 'error',
-      message: 'License key not found. Please check and try again.'
-    });
+    return res.status(404).json({ status: 'error', message: 'License key not found. Please check and try again.' });
   }
   if (keyRow.banned) {
-    return res.status(403).json({
-      status: 'error',
-      message: 'This license has been banned'
-    });
+    return res.status(403).json({ status: 'error', message: 'This license has been banned' });
   }
 
-  // Ownership check — skipped if is_master
   if (!link.is_master) {
     if (keyRow.owner_id !== link.owner_id && keyRow.created_by !== link.owner_id) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'This key does not belong to the owner of this reset link'
-      });
+      return res.status(403).json({ status: 'error', message: 'This key does not belong to the owner of this reset link' });
     }
   }
 
+  // Reset device binding AND reset activation (so expiry timer resets too)
   db.prepare(`UPDATE keys SET device_id=NULL, status='active', used_at=NULL WHERE id=?`).run(keyRow.id);
   db.prepare('DELETE FROM key_devices WHERE key_id=?').run(keyRow.id);
   db.prepare('UPDATE reset_links SET uses = uses + 1 WHERE id=?').run(link.id);
 
   res.json({
     status: 'success',
-    message: 'Device reset successful',
+    message: 'Device reset successful. Key will re-activate on next login.',
     key: keyRow.key_value
   });
 });
 
 /* ============================================================
-   RESET LINKS MANAGEMENT — protected only on /reset-links/*
+   RESET LINKS MANAGEMENT
    ============================================================ */
 export const resetLinksRouter = express.Router();
 resetLinksRouter.use('/reset-links', requireAuth, requireRole('admin'));
