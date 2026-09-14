@@ -997,6 +997,7 @@ async function renderSettings(el) {
   const rank = ROLE_RANK[ME.role];
   const canEditBranding = rank >= ROLE_RANK.owner;
   const canManageLinks = rank >= ROLE_RANK.admin;
+  const canManageMaster = rank >= ROLE_RANK.owner;
 
   let branding = { brand_name:'', brand_logo:'', brand_tagline:'', brand_footer:'', brand_color:'#7c3aed' };
   try { branding = await fetchT('/api/branding').then(r => r.json()); } catch {}
@@ -1008,6 +1009,8 @@ async function renderSettings(el) {
       links = d.links || [];
     } catch {}
   }
+  const myLinks = links.filter(l => !l.is_master);
+  const masterLinks = links.filter(l => l.is_master);
 
   el.innerHTML = `
     <h1>Settings</h1>
@@ -1024,9 +1027,9 @@ async function renderSettings(el) {
 
     ${canManageLinks ? `
     <div class="card">
-      <h2>🔗 Reset Links</h2>
+      <h2>🔗 My Reset Links</h2>
       <p class="muted" style="margin-bottom:14px">
-        Share these links with customers so they can reset their own device. The link auto-copies when created.
+        Share these links with your customers. Each link can ONLY reset keys that belong to you.
       </p>
 
       <div class="grid">
@@ -1037,14 +1040,44 @@ async function renderSettings(el) {
           <input id="rlMaxUses" type="number" min="1" placeholder="unlimited">
         </label>
       </div>
-      <button class="primary" id="rlCreate" style="margin-top:8px">🔗 Create Reset Link</button>
+      <button class="primary" id="rlCreate" style="margin-top:8px">🔗 Create My Reset Link</button>
 
       <div class="table-wrap" style="margin-top:18px">
         <table>
           <thead><tr><th>Link</th><th>Note</th><th>Uses</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead>
           <tbody>
-            ${links.length === 0 ? '<tr><td colspan="5" class="muted" style="text-align:center;padding:20px">No reset links yet</td></tr>' :
-              links.map(l => `
+            ${myLinks.length === 0 ? '<tr><td colspan="5" class="muted" style="text-align:center;padding:20px">No reset links yet</td></tr>' :
+              myLinks.map(l => `
+                <tr>
+                  <td><code>${l.token.slice(0, 16)}…</code></td>
+                  <td>${l.note || '—'}</td>
+                  <td>${l.uses}${l.max_uses ? ' / ' + l.max_uses : ''}</td>
+                  <td>${new Date(l.created_at*1000).toLocaleDateString()}</td>
+                  <td style="text-align:right;white-space:nowrap">
+                    <button class="btn-icon edit" data-copy="${l.token}" title="Copy URL">📋</button>
+                    <button class="btn-icon delete" data-rm="${l.id}" title="Delete">🗑️</button>
+                  </td>
+                </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>` : ''}
+
+    ${canManageMaster ? `
+    <div class="card" style="border-color:rgba(239,68,68,0.5);background:rgba(239,68,68,0.04)">
+      <h2>🌐 Master Reset Link (Owner Only)</h2>
+      <p class="muted" style="margin-bottom:14px;color:#fca5a5">
+        ⚠️ This link can reset ANY key on the entire site, regardless of owner. Only share with trusted staff.
+      </p>
+
+      <button class="danger" id="rlMasterCreate">🌐 Generate Master Reset Link</button>
+
+      <div class="table-wrap" style="margin-top:18px">
+        <table>
+          <thead><tr><th>Master Link</th><th>Note</th><th>Uses</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead>
+          <tbody>
+            ${masterLinks.length === 0 ? '<tr><td colspan="5" class="muted" style="text-align:center;padding:20px">No master link created yet</td></tr>' :
+              masterLinks.map(l => `
                 <tr>
                   <td><code>${l.token.slice(0, 16)}…</code></td>
                   <td>${l.note || '—'}</td>
@@ -1063,7 +1096,7 @@ async function renderSettings(el) {
     ${canEditBranding ? `
     <div class="card">
       <h2>🎨 Branding</h2>
-      <p class="muted" style="margin-bottom:14px">These fields appear on login page & dashboard.</p>
+      <p class="muted" style="margin-bottom:14px">These fields appear on login page, reset page & dashboard.</p>
       <div class="grid">
         <label>Brand Name<input id="bName" maxlength="64" value="${branding.brand_name}"></label>
         <label>Logo (emoji)<input id="bLogo" maxlength="8" value="${branding.brand_logo}"></label>
@@ -1072,8 +1105,8 @@ async function renderSettings(el) {
         <label>Accent Color<input id="bColor" maxlength="7" value="${branding.brand_color}"></label>
       </div>
       <div class="row" style="margin-top:8px">
-        <button class="primary" id="saveBranding">Save</button>
-        <button class="ghost" id="resetBranding">Reset</button>
+        <button class="primary" id="saveBranding">Save Branding</button>
+        <button class="ghost" id="resetBranding">Reset to Default</button>
       </div>
     </div>` : ''}
   `;
@@ -1092,9 +1125,29 @@ async function renderSettings(el) {
     const url = location.origin + d.url;
     try {
       await navigator.clipboard.writeText(url);
-      toast('✓ Link created & copied to clipboard!');
+      toast('✓ Link created & copied!');
     } catch {
-      toast('✓ Link created (copy manually below)');
+      prompt('Copy this URL:', url);
+    }
+    renderSettings(el);
+  });
+
+  el.querySelector('#rlMasterCreate')?.addEventListener('click', async () => {
+    if (!confirm('Create a MASTER reset link? This can reset ANY key on the site.')) return;
+    const note = prompt('Note (optional, e.g. "Master recovery link"):', 'Master Reset Link') || '';
+    const r = await fetchT('/api/reset-links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note, is_master: true }),
+    });
+    const d = await r.json();
+    if (!r.ok) return toast('✗ ' + d.error);
+    const url = location.origin + d.url;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('✓ Master link created & copied!');
+    } catch {
+      prompt('Copy this URL:', url);
     }
     renderSettings(el);
   });
@@ -1132,6 +1185,7 @@ async function renderSettings(el) {
     if (!r.ok) return toast('✗ ' + d.error);
     toast('✓ Branding updated'); await loadBranding(); renderSettings(el);
   });
+
   el.querySelector('#resetBranding')?.addEventListener('click', async () => {
     if (!confirm('Reset branding to defaults?')) return;
     await fetchT('/api/branding', {
